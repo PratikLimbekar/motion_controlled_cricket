@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cricket Motion Prototype</title>
+    <style>
+      body { margin: 0; overflow: hidden; background: #222; color: #fff; font-family: sans-serif; }
+      #app { width: 100vw; height: 100vh; display: block; }
+      #uiLayer { position: absolute; top: 10px; left: 10px; pointer-events: none; }
+      #controls { position: absolute; bottom: 10px; left: 10px; pointer-events: none; background: rgba(0,0,0,0.5); padding: 10px; }
+      #shotResult { font-size: 24px; font-weight: bold; color: yellow; margin-top: 10px;}
+      /* #axesInfo { position: absolute; top: 10px; right: 10px; pointer-events: none; background: rgba(0,0,0,0.5); padding: 10px; text-align: right; border-radius: 5px; border: 1px solid #444; } */
+    </style>
+  </head>
+  <body>
+    <div id="uiLayer">
+      <h2>Motion Cricket</h2>
+      <div id="status">ws: disconnected</div>
+      <div id="scoreBoard" style="margin-top: 10px; font-size: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; border: 1px solid #444;">
+        <div style="font-size: 28px; font-weight: bold; color: #fff;">
+          <span id="scoreText">0/0</span> <span style="font-size: 20px; color: #aaa;">(<span id="oversText">0.0</span>)</span>
+        </div>
+        <div style="font-size: 16px; color: #ccc; margin-top: 5px;">
+          CRR: <span id="crrText">0.00</span> &nbsp;|&nbsp; Last Ball: <span id="lastRuns" style="font-weight: bold; color: yellow;">-</span>
+        </div>
+        <hr style="border-color: #555; margin: 10px 0;"/>
+        <div style="font-size: 18px; color: #ddd;">
+          ▶ <span id="strikerText">Striker: 0 (0)</span><br/>
+          &nbsp;&nbsp; <span id="nonStrikerText">Non-Striker: 0 (0)</span>
+        </div>
+      </div>
+      <div id="shotResult"></div>
+    </div>
+    
+    <!-- Minimap -->
+    <canvas id="minimap" width="150" height="150" style="position: absolute; top: 20px; right: 20px; border: 2px solid white; border-radius: 50%; background: rgba(0, 100, 0, 0.5); pointer-events: none;"></canvas>
+    <canvas id="pipMinimap" width="200" height="60" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); border: 2px solid white; border-radius: 8px; background: rgba(0, 0, 0, 0.7); pointer-events: none;"></canvas>
+
+    <div id="controls">
+      Spacebar: Launch ball (4s delay before delivery)
+    </div>
+    <!-- <div id="axesInfo">
+      <b style="color: #4CAF50">Axes Guide</b><br/>
+      <span style="color: #ffaaaa">X-Axis:</span> Left / Right<br/>
+      <span style="color: #aaffaa">Y-Axis:</span> Up / Down<br/>
+      <span style="color: #aaaaff">Z-Axis:</span> Towards / Away
+    </div> -->
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

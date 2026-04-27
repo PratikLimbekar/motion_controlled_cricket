@@ -1,0 +1,232 @@
+import { setupScene, updateBallPosition, resetBall } from './scene/setupScene.js';
+import { connectSocket } from './network/socket.js';
+import { detectSwing } from './input/swingDetector.js';
+import { handleShot } from './gameplay/shotMapper.js';
+import { addMotionData } from './input/motionBuffer.js';
+import * as THREE from 'three';
+
+/* ================================
+   🎯 TUNING PARAMETERS
+================================ */
+
+// Controls how responsive rotation feels (gyro → rotation multiplier)
+const ROTATION_SENSITIVITY = 1.0;
+
+// Controls how much translation happens from acceleration
+const POSITION_SCALE = 0.01;
+
+// How quickly bat returns to rest position (only position, NOT rotation)
+const RETURN_DAMPING = 0.1;
+
+/* ================================
+   🧠 MOTION STATE VARIABLES
+================================ */
+
+// Smoothed gravity vector (low-pass filtered)
+let gravityVec = new THREE.Vector3(0, 0, 0);
+
+// Current orientation of the phone (tracked via gyro integration)
+let currentOrientation = new THREE.Quaternion().identity();
+
+// Calibration offset (used to "zero" orientation without snapping)
+let calibrationQuaternion = new THREE.Quaternion().identity();
+
+/* ================================
+   🎮 GAME STATE
+================================ */
+
+let isBallActive = false;
+let ballPositionZ = -20;
+let lastTime = performance.now();
+
+let ballObject = null;
+let batObject = null;
+
+// Where bat naturally rests when idle
+const restPosition = new THREE.Vector3(0, 1.5, 0);
+
+/* ================================
+   🚀 INIT FUNCTION
+================================ */
+
+function init() {
+  const { scene, camera, renderer, bat, ball } = setupScene(document.getElementById('app'));
+
+  ballObject = ball;
+  batObject = bat;
+
+  /* ================================
+     📡 SOCKET INPUT (REAL-TIME SENSOR DATA)
+  ================================= */
+
+  connectSocket((data) => {
+    if (data.type !== 'motion') return;
+
+    const rawAccArr = data.data.acc;
+    const rawGyro = data.data.gyro;
+
+    // Keep buffered data for swing detection logic
+    addMotionData(rawAccArr, rawGyro);
+
+    if (!batObject) return;
+
+    /* ================================
+       🧠 1. CONVERT RAW INPUTS
+    ================================= */
+
+    const rawAcc = new THREE.Vector3(...rawAccArr);
+
+    /* ================================
+       🌍 2. GRAVITY ISOLATION
+    ================================= */
+
+    const alpha = 0.95;
+    gravityVec.lerp(rawAcc, 1 - alpha);
+
+    /* ================================
+       ⚡ 3. LINEAR ACCELERATION
+    ================================= */
+
+    const linearAcc = rawAcc.clone().sub(gravityVec);
+
+    /* ================================
+       🔄 4. GYRO → ORIENTATION
+    ================================= */
+
+    const SENSOR_DT = 0.02;
+
+    const deltaQuat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(
+        rawGyro[0] * ROTATION_SENSITIVITY * SENSOR_DT,
+        rawGyro[1] * ROTATION_SENSITIVITY * SENSOR_DT,
+        rawGyro[2] * ROTATION_SENSITIVITY * SENSOR_DT,
+        'XYZ'
+      )
+    );
+
+    currentOrientation.multiply(deltaQuat);
+
+    /* ================================
+       🧭 5. DRIFT CORRECTION
+    ================================= */
+
+    const gravityDir = gravityVec.clone().normalize();
+    const expectedDown = new THREE.Vector3(0, 1, 0);
+
+    const correctionQuat = new THREE.Quaternion().setFromUnitVectors(
+      gravityDir,
+      expectedDown
+    );
+
+    currentOrientation.slerp(correctionQuat, 0.02);
+
+    /* ================================
+       🎯 6. APPLY CALIBRATION
+    ================================= */
+
+    batObject.quaternion.copy(calibrationQuaternion).multiply(currentOrientation);
+
+    /* ================================
+       🌍 7. DEVICE → WORLD TRANSFORMATION
+    ================================= */
+
+    const worldAcc = linearAcc.clone().applyQuaternion(batObject.quaternion);
+
+    /* ================================
+       🏏 8. SWING TRANSLATION
+    ================================= */
+
+    const angularSpeed = Math.sqrt(
+      rawGyro[0] ** 2 +
+      rawGyro[1] ** 2 +
+      rawGyro[2] ** 2
+    );
+
+    // Main swing arc
+    batObject.position.x += angularSpeed * 0.002;
+
+    // Fine movement
+    batObject.position.add(worldAcc.multiplyScalar(POSITION_SCALE * 0.5));
+
+    /* ================================
+       🎯 9. SWING DETECTION
+    ================================= */
+
+    const swingEvent = detectSwing();
+    if (swingEvent) {
+      handleShot(swingEvent, ballPositionZ, isBallActive, batObject);
+      isBallActive = false;
+    }
+  });
+
+  /* ================================
+     ⌨️ INPUT CONTROLS
+  ================================= */
+
+  document.addEventListener('keydown', (e) => {
+
+    if (e.code === 'Space' && !isBallActive) {
+      document.getElementById('shotResult').innerText = "Wait for it... (4s)";
+
+      calibrationQuaternion.copy(currentOrientation).invert();
+      batObject.position.copy(restPosition);
+
+      setTimeout(() => {
+        isBallActive = true;
+        ballPositionZ = -20;
+        resetBall(ballObject);
+        document.getElementById('shotResult').innerText = "Delivery!";
+      }, 4000);
+    }
+
+    if (e.code === 'KeyR') {
+      calibrationQuaternion.copy(currentOrientation).invert();
+
+      const el = document.getElementById('shotResult');
+      el.innerText = 'Recalibrated!';
+      el.style.color = 'cyan';
+
+      setTimeout(() => { el.innerText = ''; }, 1000);
+    }
+  });
+
+  /* ================================
+     🎬 RENDER LOOP
+  ================================= */
+
+  function animate(time) {
+    requestAnimationFrame(animate);
+
+    const dt = (time - lastTime) / 1000 || 0;
+    lastTime = time;
+
+    /* ⚾ BALL PHYSICS */
+
+    if (isBallActive) {
+      ballPositionZ += 15 * dt;
+
+      if (ballPositionZ > 2) {
+        isBallActive = false;
+        document.getElementById('shotResult').innerText = "Missed the ball!";
+      } else {
+        updateBallPosition(ballObject, ballPositionZ);
+      }
+    }
+
+    /* 🪶 POSITION DAMPING */
+
+    if (batObject) {
+      batObject.position.lerp(restPosition, RETURN_DAMPING);
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  requestAnimationFrame(animate);
+}
+
+/* ================================
+   🚀 START APP
+================================ */
+
+init();

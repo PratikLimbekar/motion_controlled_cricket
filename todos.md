@@ -1,0 +1,4 @@
+- ball trail?
+- vibrate phone (smol vibs)
+- camera follow ball?
+- 
