@@ -1,14 +1,9 @@
 import * as THREE from 'three';
 import { config } from '../config.js';
 
-const BALL_RADIUS = 0.2;
+const BALL_RADIUS = config.physics.ballRadius;
 
-// Tunable Physics/Difficulty Parameters
-export const physicsSettings = {
-  hitboxMultiplier: 2.5,     // Makes the bat's collision area larger (1.0 = strict, >1.0 = easier)
-  edgeForgiveness: 0.5,      // Reduces the penalty when hitting off-center (0.0 to 1.0)
-  powerBoost: 1.2            // Overall multiplier to shot speed
-};
+// Tunable Physics/Difficulty Parameters are now in config.js
 
 // The bat blade dimensions in the pivot's local space
 // From setupScene: position is (0, 1.5, 0) and geometry is Box(0.5, 3, 0.2)
@@ -33,7 +28,7 @@ export function detectBatBallContact(batObject, ballObject) {
   const closestPointLocal = new THREE.Vector3().copy(localBallPos).clamp(batLocalBox.min, batLocalBox.max);
   
   // 3. Distance check for OBB vs Sphere intersection
-  const effectiveRadius = BALL_RADIUS * physicsSettings.hitboxMultiplier;
+  const effectiveRadius = BALL_RADIUS * config.physics.hitboxMultiplier;
   const distance = closestPointLocal.distanceTo(localBallPos);
   
   if (distance <= effectiveRadius) {
@@ -91,7 +86,7 @@ export function computeShotFromContact(contactInfo, batObject, incomingBallVeloc
   let powerMultiplier = 1.0;
   if (absEdge > 0.4) {
     // reduce power on edges, mitigated by edgeForgiveness
-    const penalty = (absEdge - 0.4) * (1.0 - physicsSettings.edgeForgiveness);
+    const penalty = (absEdge - 0.4) * (1.0 - config.physics.edgeForgiveness);
     powerMultiplier = Math.max(0.3, 1.0 - penalty); 
     // Add randomness based on edge
     finalDirection.x += edgeFactor * (0.2 + Math.random() * 0.3);
@@ -101,10 +96,10 @@ export function computeShotFromContact(contactInfo, batObject, incomingBallVeloc
   finalDirection.normalize();
   
   // Power Scaling
-  const baseSpeed = 10;
-  const maxExtraSpeed = 50;
+  const baseSpeed = config.physics.baseShotSpeed;
+  const maxExtraSpeed = config.physics.maxExtraShotSpeed;
   // Scale final velocity
-  const speed = (baseSpeed + (maxExtraSpeed * swingPower * powerMultiplier)) * physicsSettings.powerBoost;
+  const speed = (baseSpeed + (maxExtraSpeed * swingPower * powerMultiplier)) * config.physics.powerBoost;
   const finalVelocity = finalDirection.multiplyScalar(speed);
   
   // Determine shot type string for UI
@@ -125,13 +120,13 @@ export function computeShotFromContact(contactInfo, batObject, incomingBallVeloc
 
 export function applyBallVelocity(ballObject, velocity, dt) {
   ballObject.position.addScaledVector(velocity, dt);
-  velocity.y -= 9.8 * 2 * dt; // Gravity
+  velocity.y -= config.physics.gravity * dt; 
   
   // Simple bounce
-  if (ballObject.position.y <= 0.2) {
-    ballObject.position.y = 0.2;
-    velocity.y *= -0.35; // Reduced bounce (was -0.6 or -0.4)
-    velocity.x *= 0.95; // Friction
-    velocity.z *= 0.95;
+  if (ballObject.position.y <= config.environment.groundHeight) {
+    ballObject.position.y = config.environment.groundHeight;
+    velocity.y *= config.physics.bounceFactor;
+    velocity.x *= config.physics.friction;
+    velocity.z *= config.physics.friction;
   }
 }

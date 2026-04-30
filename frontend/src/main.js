@@ -9,17 +9,7 @@ import * as THREE from 'three';
 /* ================================
    🎯 TUNING PARAMETERS
 ================================ */
-
-// Controls how responsive rotation feels (gyro → rotation multiplier)
-const ROTATION_SENSITIVITY = 1;
-
-// Controls how much translation happens from acceleration
-const POSITION_SCALE = 0.02;
-
-// How quickly bat returns to rest position (only position, NOT rotation)
-const RETURN_DAMPING = 0.1;
-
-const GYRO_DEADZONE = 0.1;
+// All tuning parameters are now in config.js
 
 /* ================================
    🧠 MOTION STATE VARIABLES
@@ -47,7 +37,7 @@ let isBallHit = false;
 let ballHasBouncedAfterHit = false;
 let shotHistoryAngles = []; // Store angles of last 2 shots in radians
 let ballVelocity = new THREE.Vector3(0, 0, 0);
-let ballPositionZ = -20;
+let ballPositionZ = config.environment.ballStartPosZ;
 let ballTrail = []; // Array of {x, z}
 let firstBouncePos = null; // {x, z}
 let lastTime = performance.now();
@@ -58,8 +48,8 @@ const CAMERA_MODES = {
   FOLLOW_BALL: 'follow_ball'
 };
 let currentCameraMode = CAMERA_MODES.BATSMAN;
-let cameraTargetPos = new THREE.Vector3(0, 3, 10);
-let cameraLookAtTarget = new THREE.Vector3(0, 1.5, 0);
+let cameraTargetPos = new THREE.Vector3(config.cameraSettings.batsmanCamPos.x, config.cameraSettings.batsmanCamPos.y, config.cameraSettings.batsmanCamPos.z);
+let cameraLookAtTarget = new THREE.Vector3(config.cameraSettings.batsmanLookAt.x, config.cameraSettings.batsmanLookAt.y, config.cameraSettings.batsmanLookAt.z);
 
 // Hit Feedback
 let contactFlash = null;
@@ -169,8 +159,8 @@ let ballObject = null;
 let batObject = null;
 let bounceMarkerObject = null;
 
-// Where bat naturally rests when idle (moved left and towards screen)
-const restPosition = new THREE.Vector3(-0.8, 1, 1.0);
+// Where bat naturally rests when idle (centralized in config.environment)
+const restPosition = new THREE.Vector3(config.environment.restPosition.x, config.environment.restPosition.y, config.environment.restPosition.z);
 
 /* ================================
    🚀 INIT FUNCTION
@@ -332,6 +322,7 @@ function init() {
     isBallActive = false;
     isBallHit = false;
     ballHasBouncedAfterHit = false;
+    currentCameraMode = CAMERA_MODES.BATSMAN;
     
     runState.isRunning = false;
     runState.runnerProgress = 0.0;
@@ -360,7 +351,7 @@ function init() {
       isBallHit = false;
       ballHasBouncedAfterHit = false;
       ballVelocity.set(0, 0, 0);
-      ballPositionZ = -20;
+      ballPositionZ = config.environment.ballStartPosZ;
       
       // Randomize delivery
       deliverySpeed = config.deliverySettings.baseSpeed + Math.random() * config.deliverySettings.speedVariance;
@@ -368,7 +359,7 @@ function init() {
       
       // Calculate where the ball should pitch on the X axis
       const targetPitchX = config.deliverySettings.pitchXMin + Math.random() * (config.deliverySettings.pitchXMax - config.deliverySettings.pitchXMin);
-      const timeToReachPitch = (deliveryPitchZ - (-20)) / deliverySpeed;
+      const timeToReachPitch = (deliveryPitchZ - config.environment.ballStartPosZ) / deliverySpeed;
       
       // Calculate the required horizontal velocity (swing) to reach that X position
       deliverySwingX = targetPitchX / timeToReachPitch;
@@ -504,15 +495,18 @@ function init() {
        ctx.setLineDash([]);
     }
 
-    // First Bounce Marker
+    // First Bounce Position (Red X)
     if (firstBouncePos) {
        const bx = cx + firstBouncePos.x * scale;
        const bz = cy + firstBouncePos.z * scale;
+       const size = 5;
+       ctx.beginPath();
        ctx.strokeStyle = 'red';
        ctx.lineWidth = 2;
-       ctx.beginPath();
-       ctx.moveTo(bx - 4, bz - 4); ctx.lineTo(bx + 4, bz + 4);
-       ctx.moveTo(bx + 4, bz - 4); ctx.lineTo(bx - 4, bz + 4);
+       ctx.moveTo(bx - size, bz - size);
+       ctx.lineTo(bx + size, bz + size);
+       ctx.moveTo(bx + size, bz - size);
+       ctx.lineTo(bx - size, bz + size);
        ctx.stroke();
     }
 
@@ -559,8 +553,9 @@ function init() {
       } else {
         ballObject.position.z = ballPositionZ;
         
-        // Bowled logic (larger stumps check)
-        if (ballPositionZ >= 1.8 && ballPositionZ < 2.4 && Math.abs(ballObject.position.x) < 0.4 && ballObject.position.y < 1.3) {
+        // Bowled logic (Updated for new stump position)
+        if (ballPositionZ >= config.stumpSettings.posZ_striker - 0.2 && ballPositionZ < config.stumpSettings.posZ_striker + 0.4 && 
+            Math.abs(ballObject.position.x) < config.physics.bowledXThreshold && ballObject.position.y < config.physics.bowledYThreshold) {
             isBallActive = false;
             document.getElementById('shotResult').innerText = "BOWLED!";
             document.getElementById('shotResult').style.color = "red";
@@ -569,13 +564,13 @@ function init() {
         }
         
         // Smooth parabolic bounce — ball pitches once at deliveryPitchZ
-        const releaseHeight = 1.8;
-        const groundHeight = 0.2;
-        const battingHeight = 1.4;
+        const releaseHeight = config.environment.releaseHeight;
+        const groundHeight = config.environment.groundHeight;
+        const battingHeight = config.environment.battingHeight;
         
         if (ballPositionZ < deliveryPitchZ) {
           // Approach arc: smooth drop using a quadratic ease-in
-          const t = (ballPositionZ - (-20)) / (deliveryPitchZ - (-20)); // 0→1
+          const t = (ballPositionZ - config.environment.ballStartPosZ) / (deliveryPitchZ - config.environment.ballStartPosZ); // 0→1
           ballObject.position.y = releaseHeight + (groundHeight - releaseHeight) * (t * t);
           ballObject.position.x += deliverySwingX * dt; // swing applies before pitch
         } else {
@@ -618,6 +613,11 @@ function init() {
             
             ballVelocity.copy(shot.velocity);
             
+            // IMPACT FEEDBACK & CAMERA
+            contactFlash.position.copy(contactInfo.ballWorldPos);
+            contactFlash.intensity = 15;
+            currentCameraMode = CAMERA_MODES.FOLLOW_BALL;
+
             if (shot.isEdge) {
                const originalColor = ballObject.material.color.getHex();
                ballObject.material.color.setHex(0xffff00);
@@ -636,7 +636,9 @@ function init() {
       
       const isAirborne = !ballHasBouncedAfterHit;
       
-      if (ballObject.position.y <= 0.25 && isAirborne) {
+      // Grace period for bounce: Ball must have travelled some distance from hit point 
+      const timeSinceHit = performance.now() - runState.hitStartTime;
+      if (ballObject.position.y <= config.environment.groundHeight + 0.05 && isAirborne && timeSinceHit > config.physics.hitGracePeriod) {
          ballHasBouncedAfterHit = true;
          firstBouncePos = { x: ballObject.position.x, z: ballObject.position.z };
          onBallLanded(ballObject.position, Math.floor(matchState.balls / 6));
@@ -670,25 +672,28 @@ function init() {
          // Runners are already active from hit moment
 
          const fieldedResult = updateFielderChasing(dt, ballObject, ballVelocity, isAirborne);
+          if (fieldedResult.isGathering) ballVelocity.set(0, 0, 0);
          
          if (fieldedResult.fielded) {
-              if (isAirborne && fieldedResult.canCatch) {
-                  // CATCH!
-                  isBallHit = false;
-                  runState.isRunning = false;
-                  updateMatchState(0, true);
-                  document.getElementById('shotResult').innerText = "CATCH!";
-                  document.getElementById('shotResult').style.color = "red";
+               if (fieldedResult.caught) {
+                   // CATCH!
+                   isBallHit = false;
+                   runState.isRunning = false;
+                   updateMatchState(0, true);
+                   document.getElementById('shotResult').innerText = `OUT! Caught by ${fieldedResult.fielderName}`;
+                   document.getElementById('shotResult').style.color = "red";
                   const pip = document.getElementById('pipMinimap');
                   if (pip) pip.style.display = 'none';
               } else if (!runState.isThrowing) {
-                  // Ball is fielded - runners stop advancing and return to crease
+                  // Ball is fielded - stop hit physics and start throwing
+                  isBallHit = false;
                   runState.isThrowing = true;
                   runState.isRunning = false; 
-                  runState.targetRuns = runState.runsAttempted; // Score only completed runs
+                  runState.targetRuns = runState.runsAttempted; 
                   
                   runState.fielderPos = ballObject.position.clone();
-                  const throwTime = dist / config.FIELDER_SPEED; 
+                  // Faster throw speed (dividing by 1.8 to reduce animation duration)
+                  const throwTime = (dist / config.FIELDER_SPEED) / 1.8; 
                   
                   runState.throwAnimationTime = throwTime;
                   runState.throwTotalTime = throwTime;
@@ -756,15 +761,23 @@ function init() {
 
     // Dynamic Camera System
     if (currentCameraMode === CAMERA_MODES.BATSMAN) {
-       cameraTargetPos.set(0, 5, 12);
-       cameraLookAtTarget.lerp(new THREE.Vector3(0, 1.5, -5), 0.1);
+       cameraTargetPos.set(config.cameraSettings.batsmanCamPos.x, config.cameraSettings.batsmanCamPos.y, config.cameraSettings.batsmanCamPos.z);
+       cameraLookAtTarget.lerp(new THREE.Vector3(config.cameraSettings.batsmanLookAt.x, config.cameraSettings.batsmanLookAt.y, config.cameraSettings.batsmanLookAt.z), 0.1);
     } else if (currentCameraMode === CAMERA_MODES.FOLLOW_BALL) {
        const ballPos = ballObject.position;
-       cameraTargetPos.lerp(new THREE.Vector3(ballPos.x, ballPos.y + 6, ballPos.z + 15), 0.05);
-       cameraLookAtTarget.lerp(ballPos, 0.1);
+       const s = config.cameraSettings;
+       
+       // Calculate loft intensity (0 to 1) based on ball height
+       const loftIntensity = Math.min(1.0, Math.max(0, (ballPos.y - 0.5) / 8.0));
+       const dynamicDistance = s.followDistance * (1.0 + loftIntensity * (s.loftFactor - 1.0));
+       const dynamicHeight = s.followHeight * (1.0 + loftIntensity * (s.loftFactor - 1.0));
+
+       // Maintain a follow position behind the ball relative to its travel
+       cameraTargetPos.lerp(new THREE.Vector3(ballPos.x, ballPos.y + dynamicHeight, ballPos.z + dynamicDistance), s.lerpSpeed);
+       cameraLookAtTarget.lerp(ballPos, s.lookAtLerp);
     }
     
-    const camLerpSpeed = currentCameraMode === CAMERA_MODES.BATSMAN ? 0.05 : 0.1;
+    const camLerpSpeed = currentCameraMode === CAMERA_MODES.BATSMAN ? 0.05 : config.cameraSettings.lerpSpeed;
     camera.position.lerp(cameraTargetPos, camLerpSpeed);
     camera.lookAt(cameraLookAtTarget);
 

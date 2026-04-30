@@ -36,31 +36,110 @@ export function setupScene(container) {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
   scene.add(ambientLight);
 
+  // Ground Textures
+  function createGrassTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Base green
+    ctx.fillStyle = config.colors.grassColor;
+    ctx.fillRect(0, 0, 512, 512);
+    
+    // Mowing patterns (Circular stripes)
+    ctx.strokeStyle = config.colors.grassMowColor;
+    ctx.lineWidth = 40;
+    for (let r = 20; r < 512; r += 80) {
+      ctx.beginPath();
+      ctx.arc(256, 256, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Noise/Grass detail
+    for (let i = 0; i < 15000; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.03)';
+      ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(6, 6); // More repetition for large field
+    return texture;
+  }
+
+  function createPitchTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Base dirt/clay color
+    ctx.fillStyle = config.colors.pitchColor;
+    ctx.fillRect(0, 0, 256, 512);
+    
+    // Wear marks (scuffing at ends)
+    const grad = ctx.createRadialGradient(128, 450, 20, 128, 450, 100);
+    grad.addColorStop(0, '#A08060');
+    grad.addColorStop(1, 'rgba(210, 180, 140, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 50, 256, 412);
+    
+    // Crease Markings
+    ctx.strokeStyle = config.colors.pitchMarkingColor;
+    ctx.lineWidth = 6;
+    
+    // 1. Bowling Creases (back)
+    ctx.beginPath();
+    ctx.moveTo(20, 50); ctx.lineTo(236, 50); // Bowler end
+    ctx.moveTo(20, 462); ctx.lineTo(236, 462); // Striker end
+    ctx.stroke();
+
+    // 2. Popping Creases (front)
+    ctx.beginPath();
+    ctx.moveTo(0, 80); ctx.lineTo(256, 80); 
+    ctx.moveTo(0, 432); ctx.lineTo(256, 432); 
+    ctx.stroke();
+
+    // 3. Return Creases
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(50, 0); ctx.lineTo(50, 80);
+    ctx.moveTo(206, 0); ctx.lineTo(206, 80);
+    ctx.moveTo(50, 432); ctx.lineTo(50, 512);
+    ctx.moveTo(206, 432); ctx.lineTo(206, 512);
+    ctx.stroke();
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  const grassTexture = createGrassTexture();
+  const pitchTexture = createPitchTexture();
+
   // Ground
-  const planeGeometry = new THREE.PlaneGeometry(500, 500);
+  const planeGeometry = new THREE.PlaneGeometry(600, 600); // Larger plane
   const planeMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x2E7D32,
-    roughness: 0.8,
-    metalness: 0.1
+    map: grassTexture,
+    roughness: 1.0,
+    metalness: 0.0
   }); 
   const plane = new THREE.Mesh(planeGeometry, planeMaterial);
   plane.rotation.x = -Math.PI / 2;
   plane.receiveShadow = true;
   scene.add(plane);
 
-  // Boundary Rope (Circular with thickness)
-  const boundaryGeo = new THREE.TorusGeometry(config.BOUNDARY_R, 0.3, 12, 128);
-  const boundaryMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+  // Boundary Rope
+  const boundaryGeo = new THREE.TorusGeometry(config.BOUNDARY_R, 0.4, 12, 128);
+  const boundaryMat = new THREE.MeshStandardMaterial({ color: config.colors.boundaryColor });
   const boundary = new THREE.Mesh(boundaryGeo, boundaryMat);
   boundary.rotation.x = -Math.PI / 2;
-  boundary.position.y = 0.3;
+  boundary.position.y = 0.4;
   boundary.castShadow = true;
   boundary.receiveShadow = true;
   scene.add(boundary);
 
   // 30-Yard Circle (Oval)
-  const innerCircleGeo = new THREE.RingGeometry(26.8, 27.2, 64);
-  const innerCircleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, opacity: 0.3, transparent: true });
+  const innerCircleGeo = new THREE.RingGeometry(config.INFIELD_R - 0.4, config.INFIELD_R + 0.4, 64);
+  const innerCircleMat = new THREE.MeshBasicMaterial({ color: config.colors.boundaryColor, side: THREE.DoubleSide, opacity: 0.5, transparent: true });
   const innerCircle = new THREE.Mesh(innerCircleGeo, innerCircleMat);
   innerCircle.rotation.x = -Math.PI / 2;
   innerCircle.position.y = 0.03;
@@ -70,7 +149,7 @@ export function setupScene(container) {
   // Pitch
   const pitchGeo = new THREE.PlaneGeometry(3.5, 22);
   const pitchMat = new THREE.MeshStandardMaterial({ 
-    color: 0xD2B48C,
+    map: pitchTexture,
     roughness: 0.9,
     metalness: 0.0
   });
@@ -80,16 +159,144 @@ export function setupScene(container) {
   pitch.receiveShadow = true;
   scene.add(pitch);
 
-  // Stadium Walls (Simulated Crowd)
-  const stadiumGeo = new THREE.CylinderGeometry(150, 160, 25, 64, 1, true);
-  const stadiumMat = new THREE.MeshStandardMaterial({ 
-    color: 0x444444,
+  // Stadium Components
+  function createCrowdTexture() {
+    // ... (rest of function as before)
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024; // Increased resolution for better detail
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // 1. Base tier background (Stadium concrete/seating color)
+    ctx.fillStyle = '#222';
+    ctx.fillRect(0, 0, 1024, 512);
+    
+    // 2. Draw "Seating Rows"
+    ctx.fillStyle = '#333';
+    for (let y = 0; y < 512; y += 32) {
+      ctx.fillRect(0, y, 1024, 20); // The "bench" area
+    }
+    
+    // 3. Draw "Spectators" (larger, clustered dots)
+    const colors = ['#e57373', '#81c784', '#64b5f6', '#fff176', '#a1887f', '#90a4ae', '#ffffff'];
+    for (let y = 10; y < 512; y += 32) {
+      for (let x = 0; x < 1024; x += 12) {
+        // Skip some spots for realism
+        if (Math.random() > 0.15) {
+          ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+          // Draw a small "person" (head and body simplified)
+          const pSize = 6 + Math.random() * 4;
+          ctx.fillRect(x, y, pSize, pSize); // Body
+          ctx.fillRect(x + 2, y - 4, 4, 4); // Head
+        }
+      }
+    }
+    
+    // 4. Add "Banners" (occasional larger colorful blocks)
+    for (let i = 0; i < 15; i++) {
+       const bx = Math.random() * 1024;
+       const by = Math.floor(Math.random() * 16) * 32;
+       ctx.fillStyle = Math.random() > 0.5 ? '#d32f2f' : '#1976d2';
+       ctx.fillRect(bx, by, 40, 15);
+       ctx.fillStyle = 'white';
+       ctx.font = 'bold 10px Arial';
+       ctx.fillText('INDIA', bx + 5, by + 12);
+    }
+    
+    // 5. Ambient Occlusion (Row shadows)
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, 'rgba(0,0,0,0.4)');
+    grad.addColorStop(0.1, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.9, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1024, 512);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.repeat.set(12, 1); // Adjusted repeat for better scale
+    return texture;
+  }
+
+  const crowdTexture = createCrowdTexture();
+  
+  // Tiered Stadium (Bowl Shape for Depth)
+  const stadiumGroup = new THREE.Group();
+  
+  // Moat
+  const moatGeo = new THREE.RingGeometry(config.BOUNDARY_R + 15, config.BOUNDARY_R + 40, 64);
+  const moatMat = new THREE.MeshStandardMaterial({ color: config.colors.moatColor, roughness: 0.8 });
+  const moat = new THREE.Mesh(moatGeo, moatMat);
+  moat.rotation.x = -Math.PI / 2;
+  moat.position.y = 0.1;
+  scene.add(moat);
+
+  // Lower Tier (Sloped Bowl)
+  const lowerTierGeo = new THREE.CylinderGeometry(config.BOUNDARY_R + 55, config.BOUNDARY_R + 40, 20, 64, 1, true); // Sloped outwards
+  const lowerTierMat = new THREE.MeshStandardMaterial({ 
+    map: crowdTexture,
     side: THREE.BackSide,
     roughness: 0.9
   });
-  const stadium = new THREE.Mesh(stadiumGeo, stadiumMat);
-  stadium.position.y = 12;
-  scene.add(stadium);
+  const lowerTier = new THREE.Mesh(lowerTierGeo, lowerTierMat);
+  lowerTier.position.y = 10;
+  stadiumGroup.add(lowerTier);
+
+  // Upper Tier (Even more sloped for depth)
+  const upperTierGeo = new THREE.CylinderGeometry(config.BOUNDARY_R + 85, config.BOUNDARY_R + 65, 25, 64, 1, true); // Sloped even more
+  const upperTierMat = new THREE.MeshStandardMaterial({ 
+    map: crowdTexture,
+    side: THREE.BackSide,
+    roughness: 0.9
+  });
+  const upperTier = new THREE.Mesh(upperTierGeo, upperTierMat);
+  upperTier.position.y = 32;
+  stadiumGroup.add(upperTier);
+  
+  // Roof / Rim
+  const rimGeo = new THREE.TorusGeometry(config.BOUNDARY_R + 85, 3, 8, 64);
+  const rimMat = new THREE.MeshStandardMaterial({ color: config.colors.stadiumColor });
+  const rim = new THREE.Mesh(rimGeo, rimMat);
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 44.5;
+  stadiumGroup.add(rim);
+
+  scene.add(stadiumGroup);
+
+  // Floodlights
+  function createFloodlight(x, z, rotation) {
+    const lightGroup = new THREE.Group();
+    const poleGeo = new THREE.CylinderGeometry(1, 1.5, 60, 8);
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x777777 });
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.y = 30;
+    lightGroup.add(pole);
+
+    const panelGeo = new THREE.PlaneGeometry(12, 8);
+    const panelMat = new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xffffff, emissiveIntensity: 0.5 });
+    const panel = new THREE.Mesh(panelGeo, panelMat);
+    panel.position.y = 60;
+    panel.position.z = 2;
+    panel.rotation.x = Math.PI / 6;
+    lightGroup.add(panel);
+
+    lightGroup.position.set(x, 0, z);
+    lightGroup.rotation.y = rotation;
+    return lightGroup;
+  }
+
+  const fDist = config.BOUNDARY_R + 80;
+  scene.add(createFloodlight(fDist, fDist, -Math.PI / 4));
+  scene.add(createFloodlight(-fDist, fDist, Math.PI / 4));
+  scene.add(createFloodlight(fDist, -fDist, -Math.PI * 0.75));
+  scene.add(createFloodlight(-fDist, -fDist, Math.PI * 0.75));
+
+  // Sight Screen
+  const ssGeo = new THREE.PlaneGeometry(15, 12);
+  const ssMat = new THREE.MeshStandardMaterial({ color: config.colors.boundaryColor, roughness: 1.0 });
+  const ss = new THREE.Mesh(ssGeo, ssMat);
+  ss.position.set(0, 6, -config.BOUNDARY_R - 5);
+  scene.add(ss);
 
   // Stumps
   function createStumps(zPos) {

@@ -8,16 +8,35 @@ let fielders = [];
 export function initFielders(sceneFielders) {
   fielders = sceneFielders;
   for (let i = 0; i < fielders.length; i++) {
+    const role = config.FIELDER_ROLES[i];
     fielders[i].userData = {
       ...fielders[i].userData,
       basePos: new THREE.Vector3(),
       isDeep: false,
       isFumbling: false,
       hasCheckedCatch: false,
-      role: config.FIELDER_ROLES[i]
+      role: role,
+      
+      // NEW HUMAN-LIKE AI STATE
+      velocity: new THREE.Vector3(0, 0, 0),
+      forward: new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), role.angle * (Math.PI/180)),
+      reactionTimer: 0,
+      reactionTime: config.fielderTuning.reactionTimeRange.min + Math.random() * (config.fielderTuning.reactionTimeRange.max - config.fielderTuning.reactionTimeRange.min),
+      commitTimer: 0,
+      commitTarget: new THREE.Vector3(),
+      isGathering: false,
+      gatheringTimer: 0,
+      skill: getSkillForRole(role.name)
     };
   }
   _recomputeTargets(0);
+}
+
+function getSkillForRole(name) {
+  const s = config.fielderTuning.skills;
+  if (name.includes('Slip') || name.includes('Gully')) return s.slip;
+  if (name.includes('Point') || name.includes('Cover') || name.includes('Mid')) return s.infield;
+  return s.outfield;
 }
 
 function clampToBoundary(pos, margin) {
@@ -132,70 +151,131 @@ function _recomputeTargets(currentOver) {
 }
 
 export function updateFielderChasing(delta, ball, ballVelocity, isAirborne) {
-  let fieldedResult = { fielded: false, caught: false, fielderName: null, fumbling: false };
-  
-  // Ignore fumbling
-  let activeFielders = fielders.filter(f => !f.userData.isFumbling);
-  
-  // Sort by distance to ball
-  activeFielders.sort((a, b) => a.position.distanceToSquared(ball.position) - b.position.distanceToSquared(ball.position));
-  
-  // Check catch/fumble logic FIRST
-  for (let f of activeFielders) {
-     if (ball.position.y > config.MAX_CATCH_HEIGHT) continue; 
+  let fieldedResult = { fielded: false, caught: false, fielderName: null, fumbling: false, isGathering: false };
+  const tuning = config.fielderTuning;
+  const ballSpeed = ballVelocity.length();
+
+  // 1. Calculate projected target once
+  const projectedTarget = ball.position.clone();
+  if (ballSpeed > 5) {
+     let lookAhead = tuning.lookAheadTime;
+     if (ballVelocity.y > 0) {
+        let timeToLand = (2 * ballVelocity.y) / config.physics.gravity;
+        lookAhead = Math.min(timeToLand, 1.2);
+     }
+     projectedTarget.add(ballVelocity.clone().multiplyScalar(lookAhead));
+  }
+  projectedTarget.y = 0;
+
+  // 2. Sorting & Vision/Reaction Filtering
+  let fieldersWithIntel = fielders.map(f => {
+     if (f.userData.isFumbling) return { f, score: Infinity, canReact: false };
      
-     let catchRadius = config.CATCH_RADIUS_GROUND;
-     if (isAirborne) catchRadius = config.CATCH_RADIUS_AIR;
-     
-     if (f.position.distanceTo(ball.position) < catchRadius) {
+     // Reaction Delay
+     f.userData.reactionTimer += delta;
+     if (f.userData.reactionTimer < f.userData.reactionTime / f.userData.skill.reaction) {
+        return { f, score: Infinity, canReact: false };
+     }
+
+     // Vision Cone (Awareness)
+     const toBall = ball.position.clone().sub(f.position).normalize();
+     const dot = f.userData.forward.dot(toBall);
+     if (dot < tuning.visionConeThreshold && ball.position.distanceTo(f.position) > 30) {
+        return { f, score: Infinity, canReact: false };
+     }
+
+     return { f, score: f.position.distanceToSquared(projectedTarget), canReact: true };
+  });
+
+  fieldersWithIntel.sort((a, b) => a.score - b.score);
+  const activeChasers = fieldersWithIntel.filter(item => item.canReact).slice(0, 3);
+
+  // 3. Catch & Gather Logic
+  for (let item of fieldersWithIntel) {
+     const f = item.f;
+     if (!item.canReact || f.userData.isFumbling) continue;
+
+     if (f.userData.isGathering) {
+        f.userData.gatheringTimer += delta;
+        fieldedResult.isGathering = true; // Signal main loop to stop ball
+        if (f.userData.gatheringTimer >= tuning.gatheringWaitTime) {
+           return { fielded: true, caught: f.userData.caughtLast, fielderName: f.userData.role.name, fumbling: false };
+        }
+        return fieldedResult;
+     }
+
+     const dx = f.position.x - ball.position.x;
+     const dz = f.position.z - ball.position.z;
+     const dist2D = Math.sqrt(dx*dx + dz*dz);
+     const catchRadius = isAirborne ? tuning.catchRadiusAir : tuning.catchRadiusGround;
+
+     if (dist2D < catchRadius && ball.position.y < tuning.maxCatchHeight) {
         if (f.userData.hasCheckedCatch) continue;
         f.userData.hasCheckedCatch = true;
-        
-        let prob = isAirborne ? config.CATCH_PROB_AIR : config.CATCH_PROB_GROUND;
-        if (ballVelocity.lengthSq() > 50*50) prob -= 0.12;
-        
+
+        let prob = (isAirborne ? tuning.catchProbAir : tuning.catchProbGround) * f.userData.skill.catching;
+        if (ballSpeed > 40) prob -= tuning.fumbleSpeedPenalty;
+
         if (Math.random() > prob) {
            f.userData.isFumbling = true;
-           setTimeout(() => f.userData.isFumbling = false, 500);
+           setTimeout(() => f.userData.isFumbling = false, tuning.fumbleDuration);
            fieldedResult.fumbling = true;
-           continue; // Look for next fielder to field it
         } else {
-           return { fielded: true, caught: isAirborne, fielderName: f.userData.role.name, fumbling: false };
+           f.userData.isGathering = true;
+           f.userData.gatheringTimer = 0;
+           f.userData.caughtLast = isAirborne;
+           f.userData.velocity.set(0,0,0);
+           fieldedResult.isGathering = true;
+           return fieldedResult;
         }
      }
   }
-  
-  // Move 2 closest fielders
-  for (let i = 0; i < Math.min(2, activeFielders.length); i++) {
-     const f = activeFielders[i];
+
+  // 4. Movement Logic
+  activeChasers.forEach((item, index) => {
+     const f = item.f;
+     if (f.userData.isGathering) return;
+
+     f.userData.commitTimer -= delta;
      
-     let targetPos = ball.position.clone();
-     const ballSpeed = ballVelocity.length();
-     
-     if (ballSpeed > 5) {
-        let lookAhead = 0.7;
-        if (ballVelocity.y > 0) {
-           let timeToLand = (2 * ballVelocity.y) / 19.6;
-           lookAhead = Math.min(timeToLand, 1.2);
-        }
-        targetPos.add(ballVelocity.clone().multiplyScalar(lookAhead));
+     // Simplified target logic to reduce jitter
+     let moveTarget = projectedTarget.clone();
+     if (index === 0) {
+        // Primary goes straight for the kill
+     } else if (index === 1) { 
+        // Backup moves to cover the trajectory line
+        const backupOffset = ballVelocity.clone().normalize().multiplyScalar(4);
+        moveTarget.add(backupOffset);
+     } else {
+        // Cover stays closer to boundary
+        clampToBoundary(moveTarget, tuning.boundaryMargin + 10);
      }
-     
-     clampToBoundary(targetPos, 2.0); // 20 units scaled is ~1.8
-     
-     const dir = targetPos.clone().sub(f.position);
+
+     if (f.userData.commitTimer <= 0) {
+        f.userData.commitTarget.copy(moveTarget);
+        f.userData.commitTimer = tuning.commitDuration;
+     }
+
+     const dir = f.userData.commitTarget.clone().sub(f.position);
      dir.y = 0;
      const dist = dir.length();
-     
-     const speed = config.FIELDER_SPEED;
-     if (dist > 0.1) {
+
+     if (dist > 0.2) {
         dir.normalize();
-        f.position.addScaledVector(dir, Math.min(speed * delta, dist));
+        const targetVel = dir.multiplyScalar(config.FIELDER_SPEED * f.userData.skill.speed);
+        f.userData.velocity.lerp(targetVel, tuning.accelerationFactor);
+        f.position.addScaledVector(f.userData.velocity, delta);
+        
+        if (f.userData.velocity.length() > 0.5) {
+           f.userData.forward.lerp(f.userData.velocity.clone().normalize(), 0.1);
+        }
+     } else {
+        f.userData.velocity.lerp(new THREE.Vector3(0,0,0), 0.3);
      }
-     
+
      clampToBoundary(f.position, 1.5);
-  }
-  
+  });
+
   return fieldedResult;
 }
 
@@ -203,6 +283,11 @@ export function resetFielderStates() {
   for (let f of fielders) {
      f.userData.hasCheckedCatch = false;
      f.userData.isFumbling = false;
+     f.userData.reactionTimer = 0;
+     f.userData.commitTimer = 0;
+     f.userData.velocity.set(0, 0, 0);
+     f.userData.isGathering = false;
+     f.userData.gatheringTimer = 0;
   }
 }
 
