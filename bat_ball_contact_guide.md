@@ -195,3 +195,17 @@ if (Math.abs(hitPositionOnBat) > 0.6) {
 ## Important Note on Current Architecture
 
 The current system uses `detectSwing()` which polls the **motion buffer** — it has ~130ms of latency by design (the buffer exists to smooth noise). When moving to collision-based detection, contact must be detected **immediately in the render loop** (not via the buffer). The buffer should only be used to qualify *whether* the bat is currently in an active swing.
+
+
+
+
+
+
+
+- add a bowler and a wicket keeper. The bowler can change sides on the pitch randomly, and the ball comes from the bowler after the run up is done, and not randomly from top of the stumps. Ensure that the wicket keeper is behind the bat and the stumps and that each return throw from the fielder is returned to the wicket keeper. 
+- ensure that there are 11 fielders on the field. Update mini map to show them (including bowler and wicket keeper).
+- add a loft shot and a stroke shot button on the mobile app, that on click will result in a lofted shot by the user. Ensure that these buttons are in a clickable zone while playing. Move the disconnect button to the top right corner. add a small Scorecard button at the bottom left corner. Reduce power of shots that aren't stroke or loft. Make it so that stroke shots are along the ground and lofted shots go in the air, based on their timings. Ensure that only one of them can be toggled at a time, and provided visual feedback of which of them is toggled to the user on the screen.
+- create a roster of 10 teams and their playing XI. create a UI as per the reference image provided. Use the Roster to fetch names of teams, players and bowlers dynamically. No static names. Currently default to India as the user's playing team. 
+- Show dynamic scorecard upon clicking button from mobile or hitting S. Make it disappear on another click of same button. 
+- Grab the last five players of each team from the roster. These are your bowlers. Show them on the scorebar at the bottom and also take note of the runs they have gone for, the wickets they have taken and the overs they have bowled. Show this in the scorecard as well. Ensure that each bowler can bowl only 4 overs per match. 
+- Move the running between wickets pip from bottom to top of the screen, as it will overlay on the scorecard.

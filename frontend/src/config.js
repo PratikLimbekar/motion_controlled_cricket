@@ -1,35 +1,36 @@
 export const config = {
   // Motion Controls
   ROTATION_SENSITIVITY: 1,
-  POSITION_SCALE: 0.02,
+  POSITION_SCALE: 0.029,
   RETURN_DAMPING: 0.1,
   GYRO_DEADZONE: 0.1,
   MAX_EXPECTED_ACC: 50.0,
 
-  // Teams
-  indianXI: [
-    "Rohit Sharma", "Shubman Gill", "Virat Kohli", "Shreyas Iyer", 
-    "KL Rahul", "Hardik Pandya", "Ravindra Jadeja", "Axar Patel", 
-    "Kuldeep Yadav", "Jasprit Bumrah", "Mohammed Siraj"
-  ],
-
   // Delivery Settings
   deliverySettings: {
-    pitchZMin: -11,    // Minimum pitch distance
-    pitchZMax: 1.5,      // Maximum pitch distance
-    pitchXMin: -0.5,   // Minimum horizontal pitch location
-    pitchXMax: 1.3,    // Maximum horizontal pitch location
-    spinXMax: 4.5,     // Maximum lateral spin drift AFTER bounce
-    baseSpeed: 18,     // Minimum ball speed
-    speedVariance: 12   // Additional random speed added
+    pitchZMin: -9,
+    pitchZMax: 2,
+    pitchXMin: -0.5,
+    pitchXMax: 1,
+    spinXMax: 3,
+    baseSpeed: 20,
+    speedVariance: 10
   },
-  
+
+  // Bowler Settings
+  bowlerSettings: {
+    runUpStartZ: -30,       // Where bowler starts their run-up
+    releaseZ: -20,          // Z position at point of release (matches ballStartPosZ)
+    runUpDuration: 1.5,     // seconds to complete run-up
+    offsetOptions: [-0.45, -0.3, 0.3, 0.45], // X offsets (sides of crease)
+  },
+
   // Bat Settings
   batSettings: {
-    width: 0.42,
-    height: 3.2,
-    thickness: 0.06, // Side thickness
-    spineThickness: 0.16, // Total thickness at spine peak
+    width: 0.46,
+    height: 3.4,
+    thickness: 0.06,
+    spineThickness: 0.16,
     color: 0xE6C9A8,
     handleColor: 0xffffff,
     stickerColor: 0xd32f2f,
@@ -38,17 +39,18 @@ export const config = {
 
   // Stump Settings
   stumpSettings: {
-    posZ_striker: 4.5, // Pushed towards +ve Z
+    posZ_striker: 4.5,
     posZ_bowler: -18.0,
-    scale: 1.2,
+    scale: 1.3,
     spacing: 0.22,
-    color: 0xffcc00
+    color: 0xffcc00,
+    wkPosZ: 4.5 + 4.5, // Moved further back (was +2.0)
   },
 
   // Colors & Aesthetics
   colors: {
-    grassColor: '#1B5E20',    // Dark, professional green
-    grassMowColor: '#2E7D32', // Slightly lighter for mowing stripes
+    grassColor: '#1B5E20',
+    grassMowColor: '#2E7D32',
     pitchColor: '#D2B48C',
     pitchMarkingColor: '#FFFFFF',
     moatColor: '#222222',
@@ -57,55 +59,65 @@ export const config = {
   },
 
   // Field & Physics Rules
-  BOUNDARY_R: 140, // Scaled up ground
-  INFIELD_R: 45,  // Scaled up infield
+  BOUNDARY_R: 140,
+  INFIELD_R: 45,
   INFIELD_SCALE_X: 1.2,
   INFIELD_SCALE_Z: 1.7,
-  DEEP_R: 140 * 0.95, 
-  INNER_MAX: 40, 
-  FIELDER_SPEED: 34.5, // Increased speed for larger ground coverage
+  DEEP_R: 140 * 0.95,
+  INNER_MAX: 40,
+  FIELDER_SPEED: 24.5,
   FIELDER_SCALE: 1.5,
-  RUNNER_SPEED: 10, 
+  RUNNER_SPEED: 6,
   PITCH_LENGTH: 20.0,
 
-  // Default Fielder Roles (Base Angles & Radii)
+  // 9 Regular Fielder Roles (bowler + wicketkeeper are separate)
   FIELDER_ROLES: [
-    { name: 'Slip', angle: 302, r: 18 },
-    { name: 'Gully', angle: 325, r: 45 * 0.58 },
-    { name: 'Point', angle: 0, r: 45 * 0.88 },
-    { name: 'Cover', angle: 38, r: 45 * 0.82 },
-    { name: 'Mid Off', angle: 62, r: 45 * 0.78 },
-    { name: 'Mid On', angle: 118, r: 45 * 0.78 },
-    { name: 'Mid Wicket', angle: 142, r: 45 * 0.82 },
-    { name: 'Square Leg', angle: 180, r: 45 * 0.88 },
-    { name: 'Fine Leg', angle: 230, r: 45 * 0.58 }
+    { name: 'Slip',        angle: 302, r: 18 },
+    { name: 'Gully',       angle: 325, r: 45 * 0.58 },
+    { name: 'Point',       angle: 0,   r: 45 * 0.88 },
+    { name: 'Cover',       angle: 38,  r: 45 * 0.82 },
+    { name: 'Mid Off',     angle: 62,  r: 45 * 0.78 },
+    { name: 'Mid On',      angle: 118, r: 45 * 0.78 },
+    { name: 'Mid Wicket',  angle: 142, r: 45 * 0.82 },
+    { name: 'Square Leg',  angle: 180, r: 45 * 0.88 },
+    { name: 'Fine Leg',    angle: 230, r: 45 * 0.58 }
   ],
 
   // Camera Settings
   cameraSettings: {
-    followDistance: 22, // Pushed back for better field view
-    followHeight: 9,   // Higher for overview
-    loftFactor: 1.4,   // More aggressive zoom for lofted shots
+    followDistance: 22,
+    followHeight: 9,
+    loftFactor: 1.4,
     lerpSpeed: 0.1,
     lookAtLerp: 0.1,
     batsmanCamPos: { x: 0, y: 5, z: 10 },
     batsmanLookAt: { x: 0, y: 1.5, z: -5 }
   },
 
+  // Shot Mode Settings
+  shotSettings: {
+    loftLiftBonus: 0.9,       // extra Y added to shot velocity for loft
+    loftMinY: 0.4,            // minimum upward component for loft
+    strokeMaxY: 0.02,         // flatter strokes
+    strokeSpeedBonus: 1.15,   // speed bonus for clean strokes
+    defaultPowerPenalty: 0.55 // power multiplier when no mode active
+  },
+
   // Physics & Gameplay Tuning
   physics: {
-    gravity: 9.8 * 2.2, // Slightly higher for snappier ball movement
+    gravity: 9.8 * 2.2,
     ballRadius: 0.2,
-    hitboxMultiplier: 2.2, // More forgiving hits
-    edgeForgiveness: 0.45,
-    powerBoost: 1.2,
+    hitboxMultiplier: 4.5,    // Highly forgiving hitbox
+    edgeForgiveness: 0.75,    // Penalty on edges is minimal
+    edgeThreshold: 0.925,
+    powerBoost: 1.4,
     baseShotSpeed: 10,
-    maxExtraShotSpeed: 55,
+    maxExtraShotSpeed: 50,
     bounceFactor: -0.38,
     friction: 0.96,
     bowledXThreshold: 0.45,
     bowledYThreshold: 1.4,
-    hitGracePeriod: 120 // ms
+    hitGracePeriod: 50
   },
 
   // Environment Positions
@@ -119,26 +131,22 @@ export const config = {
 
   // Fielder Behavior Tuning
   fielderTuning: {
-    catchRadiusGround: 3.2, 
-    catchRadiusAir: 5.0,    
-    maxCatchHeight: 8.5,   
+    catchRadiusGround: 3.2,
+    catchRadiusAir: 5.0,
+    maxCatchHeight: 6.5,
     catchProbAir: 0.95,
     catchProbGround: 0.99,
     fumbleProbability: 0.1,
-    fumbleSpeedPenalty: 0.15, 
+    fumbleSpeedPenalty: 0.15,
     fumbleDuration: 600,
     lookAheadTime: 0.8,
     boundaryMargin: 2.0,
-
-    // NEW HUMAN-LIKE AI PARAMETERS
-    reactionTimeRange: { min: 0.05, max: 0.25 }, // Seconds
-    visionConeThreshold: 0.4, // Dot product threshold (1.0 = strict, -1.0 = blind)
-    accelerationFactor: 0.08, // How quickly they reach top speed (0-1)
-    commitDuration: 0.4, // Seconds they lock onto a target direction
-    interceptBias: 0.15, // How much they lead the ball (0 = chase, 1 = extreme intercept)
-    gatheringWaitTime: 0.45, // Seconds they wait before throwing back
-    
-    // Role-based Skill Multipliers
+    reactionTimeRange: { min: 0.05, max: 0.25 },
+    visionConeThreshold: 0.4,
+    accelerationFactor: 0.08,
+    commitDuration: 0.4,
+    interceptBias: 0.15,
+    gatheringWaitTime: 0.45,
     skills: {
       slip:    { speed: 0.9, reaction: 1.5, catching: 1.2, aggression: 1.1 },
       infield: { speed: 1.1, reaction: 1.1, catching: 1.0, aggression: 1.3 },

@@ -1,52 +1,401 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cricket Motion Prototype</title>
-    <style>
-      body { margin: 0; overflow: hidden; background: #222; color: #fff; font-family: sans-serif; }
-      #app { width: 100vw; height: 100vh; display: block; }
-      #uiLayer { position: absolute; top: 10px; left: 10px; pointer-events: none; }
-      #controls { position: absolute; bottom: 10px; left: 10px; pointer-events: none; background: rgba(0,0,0,0.5); padding: 10px; }
-      #shotResult { font-size: 24px; font-weight: bold; color: yellow; margin-top: 10px;}
-      /* #axesInfo { position: absolute; top: 10px; right: 10px; pointer-events: none; background: rgba(0,0,0,0.5); padding: 10px; text-align: right; border-radius: 5px; border: 1px solid #444; } */
-    </style>
-  </head>
-  <body>
-    <div id="uiLayer">
-      <h2>Motion Cricket</h2>
-      <div id="status">ws: disconnected</div>
-      <div id="scoreBoard" style="margin-top: 10px; font-size: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; border: 1px solid #444;">
-        <div style="font-size: 28px; font-weight: bold; color: #fff;">
-          <span id="scoreText">0/0</span> <span style="font-size: 20px; color: #aaa;">(<span id="oversText">0.0</span>)</span>
-        </div>
-        <div style="font-size: 16px; color: #ccc; margin-top: 5px;">
-          CRR: <span id="crrText">0.00</span> &nbsp;|&nbsp; Last Ball: <span id="lastRuns" style="font-weight: bold; color: yellow;">-</span>
-        </div>
-        <hr style="border-color: #555; margin: 10px 0;"/>
-        <div style="font-size: 18px; color: #ddd;">
-          ▶ <span id="strikerText">Striker: 0 (0)</span><br/>
-          &nbsp;&nbsp; <span id="nonStrikerText">Non-Striker: 0 (0)</span>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cricket Motion Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #000; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
+    #app { width: 100vw; height: 100vh; display: block; position: relative; }
+
+    /* ─── Team Select Modal ───────────────────────────────── */
+    #teamSelectModal {
+      position: fixed; inset: 0; z-index: 1000;
+      background: linear-gradient(135deg, #0a1628 0%, #0d2545 50%, #0a1628 100%);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+    }
+    #teamSelectModal h1 {
+      font-family: 'Rajdhani', sans-serif; font-size: 36px; font-weight: 700;
+      letter-spacing: 3px; color: #fff;
+      text-shadow: 0 0 30px rgba(30,136,229,0.8);
+      margin: 0;
+    }
+    #teamSelectModal .subtitle {
+      font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 2px; margin-top: -10px;
+    }
+    .ts-container {
+      display: flex; gap: 40px; width: 100%; max-width: 900px; padding: 20px;
+    }
+    .ts-column { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+    .ts-column h3 { font-family: 'Rajdhani', sans-serif; font-size: 13px; letter-spacing: 3px; color: rgba(255,255,255,0.4); text-align: center; }
+    .team-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+      max-height: 400px; overflow-y: auto; padding-right: 10px;
+    }
+    /* Scrollbar */
+    .team-grid::-webkit-scrollbar { width: 4px; }
+    .team-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+    .opp-btn {
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px; padding: 12px 14px; cursor: pointer;
+      font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 600;
+      color: #fff; transition: all 0.2s;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .opp-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); transform: translateY(-1px); }
+    .opp-btn.selected { border-color: #4FC3F7; background: rgba(79,195,247,0.15); box-shadow: 0 0 15px rgba(79,195,247,0.2); }
+    .opp-flag { font-size: 18px; }
+    #startMatchBtn {
+      background: linear-gradient(135deg, #43A047, #2E7D32); border: none;
+      border-radius: 14px; padding: 18px 64px; cursor: pointer;
+      font-family: 'Rajdhani', sans-serif; font-size: 22px; font-weight: 700;
+      color: #fff; letter-spacing: 2px; transition: all 0.2s;
+      box-shadow: 0 8px 32px rgba(67,160,71,0.4);
+    }
+    #startMatchBtn:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(67,160,71,0.5); }
+    #startMatchBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ─── Game UI Layer ───────────────────────────────────── */
+    #gameUI { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 10; }
+
+    /* ─── Top-center: Runner PiP (moved from bottom) ─────── */
+    #pipMinimap {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      border: 2px solid rgba(255,255,255,0.5); border-radius: 10px;
+      background: rgba(0,0,0,0.7); display: none;
+    }
+
+    /* ─── Top-left: status + shot result ─────────────────── */
+    #topLeftHud {
+      position: absolute; top: 12px; left: 12px;
+      display: flex; flex-direction: column; gap: 10px;
+      z-index: 10;
+    }
+    #status {
+      font-size: 11px; font-weight: 500; padding: 4px 10px;
+      background: rgba(0,0,0,0.6); border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
+      width: fit-content;
+    }
+    #contactDiagram {
+      width: 80px; height: 140px;
+      background: rgba(0,0,0,0.7);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      padding: 10px;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      backdrop-filter: blur(5px);
+    }
+    #contactDiagram canvas {
+      width: 60px; height: 100px;
+    }
+    #contactDiagram label {
+      font-size: 10px; color: rgba(255,255,255,0.6); font-weight: 600; text-transform: uppercase;
+    }
+    #shotResult {
+      position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
+      font-family: 'Rajdhani', sans-serif; font-size: 82px; font-weight: 900;
+      color: #fff; text-shadow: 0 0 40px rgba(0,0,0,0.8);
+      pointer-events: none; opacity: 0; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      letter-spacing: 4px; z-index: 100;
+      white-space: nowrap;
+    }
+
+    /* ─── Shot mode indicator (top-center area) ─────────────*/
+    #shotModeIndicator {
+      position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+      display: none; align-items: center; gap: 8px;
+      background: rgba(0,0,0,0.7); border-radius: 20px; padding: 6px 16px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    #shotModeIndicator .mode-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #fff; animation: pulse 0.8s infinite;
+    }
+    #shotModeIndicator .mode-label {
+      font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 2px;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ─── Top-right: Minimap ──────────────────────────────── */
+    #minimap {
+      position: absolute; top: 12px; right: 12px;
+      border: 2px solid rgba(255,255,255,0.4); border-radius: 50%;
+      background: rgba(0,80,0,0.5);
+    }
+
+    /* ─── TV Scorebar (bottom) ────────────────────────────── */
+    #scorebar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(to right, rgba(0,10,30,0.96) 0%, rgba(5,20,50,0.96) 50%, rgba(0,10,30,0.96) 100%);
+      border-top: 1px solid rgba(255,255,255,0.1);
+      display: flex; align-items: stretch; height: 72px;
+      font-family: 'Rajdhani', sans-serif;
+    }
+    .sb-panel {
+      display: flex; align-items: center; padding: 0 16px; gap: 14px;
+    }
+    .sb-team-badge {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      min-width: 54px;
+    }
+    .sb-team-flag { font-size: 24px; }
+    .sb-team-short { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: rgba(255,255,255,0.7); }
+    .sb-batsmen { display: flex; flex-direction: column; gap: 2px; }
+    .sb-bat-row { display: flex; gap: 8px; align-items: baseline; }
+    .sb-bat-name { font-size: 14px; font-weight: 600; letter-spacing: 0.5px; color: #fff; min-width: 110px; }
+    .sb-bat-score { font-size: 14px; font-weight: 700; color: #FFD54F; min-width: 32px; }
+    .sb-bat-balls { font-size: 12px; color: rgba(255,255,255,0.5); }
+    .sb-striker-dot { color: #4FC3F7; margin-right: 2px; }
+    #sb-divider1, #sb-divider2 {
+      width: 1px; background: rgba(255,255,255,0.15); flex-shrink: 0;
+    }
+    #sb-center {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    }
+    #sb-vs-line {
+      display: flex; align-items: center; gap: 10px;
+    }
+    #sb-bat-team-name { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; color: #fff; }
+    #sb-vs { font-size: 11px; color: rgba(255,255,255,0.4); }
+    #sb-bowl-team-name { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; color: rgba(255,255,255,0.7); }
+    #sb-score-line {
+      display: flex; align-items: baseline; gap: 8px;
+    }
+    #sb-score {
+      font-size: 26px; font-weight: 700; color: #fff; letter-spacing: 1px;
+    }
+    #sb-overs-crr {
+      font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.5px;
+    }
+    #sb-last-ball-badge {
+      font-size: 13px; font-weight: 700; padding: 1px 8px;
+      border-radius: 4px; background: rgba(255,255,255,0.1);
+      min-width: 28px; text-align: center;
+    }
+    #sb-right { min-width: 200px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding: 0 16px; }
+    #sb-bowler-name { font-size: 14px; font-weight: 700; letter-spacing: 0.5px; color: #fff; }
+    #sb-bowler-stats { font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.5px; }
+    
+    #sb-over-history { display: flex; gap: 4px; margin-top: 4px; }
+    .ball-icon {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: rgba(255,255,255,0.12);
+      font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.8);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .ball-icon.boundary { background: #43A047; color: #fff; border-color: transparent; }
+    .ball-icon.wicket { background: #D32F2F; color: #fff; border-color: transparent; }
+
+    #sb-target-panel {
+      padding: 0 20px; display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
+      background: rgba(255,213,79,0.06);
+    }
+    .sb-target-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #FFD54F; }
+    #sb-target-score { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: 1px; }
+
+    /* ─── Scorecard Overlay ───────────────────────────────── */
+    #scorecardOverlay {
+      position: fixed; inset: 0; z-index: 900;
+      background: rgba(0,8,20,0.92);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      padding: 20px; pointer-events: auto;
+      backdrop-filter: blur(8px);
+    }
+    #scorecardOverlay.visible { display: flex; }
+    .sc-container {
+      background: linear-gradient(135deg, rgba(5,20,50,0.98), rgba(10,28,60,0.98));
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 20px;
+      max-width: 680px; width: 100%; padding: 28px;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.8);
+      max-height: 90vh; overflow-y: auto;
+    }
+    .sc-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 20px; padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+    .sc-title { font-family: 'Rajdhani', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 2px; }
+    .sc-innings-score { font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; color: #FFD54F; }
+    .sc-section-title {
+      font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600;
+      letter-spacing: 3px; color: rgba(255,255,255,0.4);
+      margin: 16px 0 8px;
+    }
+    .sc-table { width: 100%; border-collapse: collapse; }
+    .sc-table th {
+      font-size: 11px; font-weight: 600; letter-spacing: 2px;
+      color: rgba(255,255,255,0.35); padding: 4px 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .sc-table th:first-child { text-align: left; }
+    .sc-table td { font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 500; padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right; color: rgba(255,255,255,0.8); }
+    .sc-table td:first-child { text-align: left; color: #fff; }
+    .sc-table tr.batting-active td { color: #FFD54F; }
+    .sc-table tr.batting-active td:first-child { color: #4FC3F7; }
+    .sc-close-hint { text-align: center; margin-top: 18px; font-size: 12px; color: rgba(255,255,255,0.3); letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+
+  <!-- ─── Team Selection Screen ──────────────────────────── -->
+  <div id="teamSelectModal">
+    <h1>CRICKET SIMULATOR 3D</h1>
+    <!-- <p class="subtitle">Motion Controlled</p> -->
+
+    <div class="ts-container">
+      <div class="ts-column">
+        <h3>YOUR TEAM</h3>
+        <div class="team-grid" id="userTeamGrid">
+          <!-- Populated by JS -->
         </div>
       </div>
-      <div id="shotResult"></div>
-    </div>
-    
-    <!-- Minimap -->
-    <canvas id="minimap" width="150" height="150" style="position: absolute; top: 20px; right: 20px; border: 2px solid white; border-radius: 50%; background: rgba(0, 100, 0, 0.5); pointer-events: none;"></canvas>
-    <canvas id="pipMinimap" width="200" height="60" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); border: 2px solid white; border-radius: 8px; background: rgba(0, 0, 0, 0.7); pointer-events: none;"></canvas>
 
-    <div id="controls">
-      Spacebar: Launch ball (4s delay before delivery)
+      <div class="ts-column">
+        <h3>OPPONENT</h3>
+        <div class="team-grid" id="opponentGrid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
     </div>
-    <!-- <div id="axesInfo">
-      <b style="color: #4CAF50">Axes Guide</b><br/>
-      <span style="color: #ffaaaa">X-Axis:</span> Left / Right<br/>
-      <span style="color: #aaffaa">Y-Axis:</span> Up / Down<br/>
-      <span style="color: #aaaaff">Z-Axis:</span> Towards / Away
-    </div> -->
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+
+    <button id="startMatchBtn">START MATCH</button>
+  </div>
+
+  <!-- ─── Three.js Canvas Container ─────────────────────── -->
+  <div id="app"></div>
+
+  <!-- ─── Game HUD (shown after match starts) ────────────── -->
+  <div id="gameUI">
+
+    <!-- Runner PiP at top-center -->
+    <canvas id="pipMinimap" width="220" height="62"></canvas>
+
+    <!-- Top-left HUD -->
+    <div id="topLeftHud">
+      <div id="status">ws: disconnected</div>
+      <div id="contactDiagram">
+        <label>Impact</label>
+        <canvas id="impactCanvas" width="60" height="100"></canvas>
+      </div>
+    </div>
+
+    <!-- Big center messages -->
+    <div id="shotResult"></div>
+
+    <!-- Shot mode indicator -->
+    <div id="shotModeIndicator">
+      <div class="mode-dot" id="modeDot"></div>
+      <span class="mode-label" id="modeLabel">STROKE</span>
+    </div>
+
+    <!-- Minimap top-right -->
+    <canvas id="minimap" width="150" height="150"></canvas>
+
+    <!-- TV Scorebar -->
+    <div id="scorebar">
+      <!-- Left: batting team + batsmen -->
+      <div class="sb-panel" id="sb-left">
+        <div class="sb-team-badge" id="sb-bat-badge">
+          <span class="sb-team-flag" id="sb-bat-flag">🇮🇳</span>
+          <span class="sb-team-short" id="sb-bat-short">IND</span>
+        </div>
+        <div class="sb-batsmen">
+          <div class="sb-bat-row">
+            <span class="sb-striker-dot">▶</span>
+            <span class="sb-bat-name" id="sb-striker-name">Rohit Sharma</span>
+            <span class="sb-bat-score" id="sb-striker-runs">0</span>
+            <span class="sb-bat-balls" id="sb-striker-balls">(0)</span>
+          </div>
+          <div class="sb-bat-row">
+            <span class="sb-striker-dot" style="color:transparent">▶</span>
+            <span class="sb-bat-name" id="sb-nstriker-name">Shubman Gill</span>
+            <span class="sb-bat-score" id="sb-nstriker-runs">0</span>
+            <span class="sb-bat-balls" id="sb-nstriker-balls">(0)</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="sb-divider1"></div>
+
+      <!-- Center: score block -->
+      <div id="sb-center">
+        <div id="sb-vs-line">
+          <span id="sb-bat-team-name">INDIA</span>
+          <span id="sb-vs">v</span>
+          <span id="sb-bowl-team-name">AUS</span>
+        </div>
+        <div id="sb-score-line">
+          <span id="sb-score">0/0</span>
+          <span id="sb-overs-crr">0.0 ov · CRR —</span>
+          <span id="sb-last-ball-badge" style="color:#FFD54F">-</span>
+        </div>
+      </div>
+
+      <div id="sb-divider2"></div>
+
+      <!-- Right: current bowler + Over history -->
+      <div id="sb-right">
+        <span id="sb-bowler-name">—</span>
+        <div id="sb-over-history">
+          <!-- Populated by JS: <span class="ball-icon">0</span> etc -->
+        </div>
+      </div>
+
+      <div id="sb-divider3" style="width: 1px; background: rgba(255,255,255,0.15); flex-shrink: 0;"></div>
+
+      <!-- Target Panel -->
+      <div id="sb-target-panel">
+        <div class="sb-target-label">TARGET</div>
+        <div id="sb-target-score">142</div>
+        <div id="sb-need-stats" style="font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 600; margin-top: 2px;">NEED 143 FROM 120</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Scorecard Overlay ─────────────────────────────── -->
+  <div id="scorecardOverlay">
+    <div class="sc-container">
+      <div class="sc-header">
+        <span class="sc-title" id="sc-title">INDIA INNINGS</span>
+        <span class="sc-innings-score" id="sc-innings-score">0/0 (0.0)</span>
+      </div>
+
+      <div class="sc-section-title">BATTING</div>
+      <table class="sc-table">
+        <thead>
+          <tr>
+            <th>BATSMAN</th>
+            <th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th><th>STATUS</th>
+          </tr>
+        </thead>
+        <tbody id="sc-batting-body"></tbody>
+      </table>
+
+      <div class="sc-section-title" style="margin-top:22px">BOWLING</div>
+      <table class="sc-table">
+        <thead>
+          <tr>
+            <th>BOWLER</th>
+            <th>O</th><th>R</th><th>W</th><th>ECO</th>
+          </tr>
+        </thead>
+        <tbody id="sc-bowling-body"></tbody>
+      </table>
+
+      <p class="sc-close-hint">PRESS S · TAP SCORECARD TO CLOSE</p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
 </html>

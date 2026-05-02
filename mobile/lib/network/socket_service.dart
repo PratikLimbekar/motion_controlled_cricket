@@ -73,14 +73,17 @@ class SocketService {
     }
   }
 
-  void sendAction(String action) {
+  void sendAction(String action, [Map<String, dynamic>? data]) {
     print('[SocketService] sendAction called: $action, isConnected=$_isConnected, channel=${_channel != null}');
     try {
-      _channel?.sink.add(jsonEncode({
+      final Map<String, dynamic> payload = {
         'type': 'action',
         'action': action,
-      }));
-      print('[SocketService] action sent: $action');
+      };
+      if (data != null) payload.addAll(data);
+      
+      _channel?.sink.add(jsonEncode(payload));
+      print('[SocketService] action sent: $action with data $data');
     } catch (e) {
       print('[SocketService] sendAction error: $e');
     }
