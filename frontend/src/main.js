@@ -18,6 +18,8 @@ import {
 } from './gameplay/FielderSystem.js';
 import { config } from './config.js';
 import { ROSTER, getTeam, getBowlers } from './data/Roster.js';
+import { IPL_ROSTER, getIPLTeam } from './data/IPLRoster.js';
+import { tournament } from './data/TournamentState.js';
 import * as THREE from 'three';
 
 /* ================================
@@ -28,6 +30,7 @@ let userTeam = null;
 let opponentTeam = null;
 let currentBowlerIndex = 0; // Index within the 5 specialists
 let bowlerStats = []; // { name, overs, runs, wickets }
+let isTournamentMode = false;
 
 let isMatchStarted = false;
 let isBallActive = false;
@@ -75,8 +78,14 @@ let matchState = {
   oversBowled: 0,
   inningsBalls: 0,
   target: 0,
-  overHistory: []
+  overHistory: [],
+  overRunsStart: 0,   // total runs at start of current over (for end-of-over runs count)
 };
+
+// Wagon Wheel data: array of { x, z, runs, batterIndex }
+let wagonWheelData = [];
+let wagonWheelVisible = false;
+let wagonWheelTab = -1; // -1 = team, else batterIndex
 
 // Player Stats for Scorecard
 let batsmenStats = []; // { name, runs, balls, fours, sixes, status }
@@ -100,17 +109,323 @@ let rawOrientation = new THREE.Quaternion().identity();
 let currentWorldAngularVelocity = new THREE.Vector3();
 let currentSwingPower = 0;
 
-function initMatch(userTeamId, oppId) {
-  userTeam = getTeam(userTeamId); 
-  opponentTeam = getTeam(oppId);
+// Hand-tracked pivot state (direct displacement — no velocity lag)
+let batHandDisplacement = new THREE.Vector3();
+
+/* ================================
+   🎮 NAVIGATION & UI HELPERS
+================================ */
+
+window.showHome = () => {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('visible'));
+  document.getElementById('teamSelectModal').classList.add('hidden');
+  document.getElementById('homeScreen').style.display = 'flex';
+  document.getElementById('gameUI').style.display = 'none';
+  document.getElementById('matchResultScreen').style.display = 'none';
+  isMatchStarted = false;
+};
+
+window.showQuickPlay = () => {
+  document.getElementById('homeScreen').style.display = 'none';
+  document.getElementById('teamSelectModal').classList.remove('hidden');
+  isTournamentMode = false;
+};
+
+window.startIPLMode = () => {
+  document.getElementById('homeScreen').style.display = 'none';
+  isTournamentMode = true;
+  if (!tournament.data) {
+    showIPLTeamSelection();
+  } else {
+    window.showHub();
+  }
+};
+
+function showIPLTeamSelection() {
+  const modal = document.getElementById('iplTeamSelectModal');
+  const grid = document.getElementById('iplTeamGrid');
+  grid.innerHTML = '';
+  modal.classList.add('visible');
+
+  let selectedId = null;
+  IPL_ROSTER.teams.forEach(t => {
+    const btn = document.createElement('div');
+    btn.className = 'opp-btn';
+    btn.innerHTML = `<span class="opp-flag">${t.flagEmoji}</span><span>${t.name}</span>`;
+    btn.onclick = () => {
+      grid.querySelectorAll('.opp-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedId = t.id;
+      document.getElementById('confirmIPLTeamBtn').disabled = false;
+    };
+    grid.appendChild(btn);
+  });
+
+  document.getElementById('confirmIPLTeamBtn').onclick = () => {
+    tournament.init(selectedId);
+    modal.classList.remove('visible');
+    window.showHub();
+  };
+}
+
+window.showHub = () => {
+  if (!tournament.data) {
+    window.showHome();
+    return;
+  }
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('visible'));
+  document.getElementById('matchResultScreen').style.display = 'none';
+
+  if (tournament.data.winner) {
+    showTournamentOver();
+    return;
+  }
+
+  const hub = document.getElementById('tournamentHub');
+  hub.classList.add('visible');
+
+  const userTeam = getIPLTeam(tournament.data.userTeamId);
+  document.getElementById('hubUserTeamName').innerText = userTeam.name.toUpperCase();
+  document.getElementById('hubUserTeamLogo').innerText = userTeam.flagEmoji;
+
+  const nextMatch = tournament.getNextMatch();
+  if (nextMatch) {
+    const t1 = getIPLTeam(nextMatch.team1);
+    const t2 = getIPLTeam(nextMatch.team2);
+    document.getElementById('nextMatchUserTeam').innerText = t1.shortName;
+    document.getElementById('nextMatchOppTeam').innerText = t2.shortName;
+    document.getElementById('nextMatchDetails').innerText = `${nextMatch.name || 'Match ' + nextMatch.matchId} · ${nextMatch.date || ''}`;
+  } else {
+    document.getElementById('nextMatchDetails').innerText = "TOURNAMENT COMPLETE";
+  }
+};
+
+function showTournamentOver() {
+  const screen = document.getElementById('tournamentOverScreen');
+  screen.classList.add('visible');
+  
+  const winner = getIPLTeam(tournament.data.winner);
+  document.getElementById('championName').innerText = winner.name.toUpperCase();
+  document.getElementById('championSub').innerText = `IPL 2026 CHAMPIONS`;
+
+  const allStats = Object.values(tournament.data.stats);
+  const orange = [...allStats].sort((a, b) => b.batting.runs - a.batting.runs)[0];
+  const purple = [...allStats].sort((a, b) => b.bowling.wickets - a.bowling.wickets)[0];
+
+  document.getElementById('orangeCapPlayer').innerText = orange.name.toUpperCase();
+  document.getElementById('orangeCapRuns').innerText = `${orange.batting.runs} Runs`;
+  document.getElementById('purpleCapPlayer').innerText = purple.name.toUpperCase();
+  document.getElementById('purpleCapWkts').innerText = `${purple.bowling.wickets} Wickets`;
+}
+
+window.resetTournamentAndHome = () => {
+  tournament.reset();
+  showHome();
+};
+
+window.showFixtures = () => {
+  document.getElementById('fixturesScreen').classList.add('visible');
+  const list = document.getElementById('fixturesList');
+  list.innerHTML = '';
+
+  const allFixtures = [...tournament.data.fixtures, ...tournament.data.knockoutFixtures];
+  allFixtures.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'fixture-row';
+    if (f.team1 === tournament.data.userTeamId || f.team2 === tournament.data.userTeamId) row.classList.add('row-user');
+    
+    const t1 = getIPLTeam(f.team1);
+    const t2 = getIPLTeam(f.team2);
+    
+    let resultText = "Upcoming";
+    if (f.result) {
+      const winner = getIPLTeam(f.result.winner);
+      resultText = `${winner.shortName} won`;
+    }
+
+    row.innerHTML = `
+      <div class="fixture-date">${f.date || ''}</div>
+      <div class="fixture-teams">
+        <span>${t1.shortName}</span> <span style="color:rgba(255,255,255,0.2)">vs</span> <span>${t2.shortName}</span>
+      </div>
+      <div class="fixture-result">${resultText}</div>
+    `;
+    list.appendChild(row);
+  });
+};
+
+window.showPointsTable = () => {
+  document.getElementById('pointsTableScreen').classList.add('visible');
+  const body = document.getElementById('pointsTableBody');
+  body.innerHTML = '';
+
+  const table = tournament.getPointsTable();
+  table.forEach(t => {
+    const row = document.createElement('tr');
+    if (t.id === tournament.data.userTeamId) row.className = 'row-user';
+    row.innerHTML = `
+      <td>${t.name}</td><td>${t.played}</td><td>${t.won}</td><td>${t.lost}</td><td>${t.nr}</td><td>${t.points}</td><td>${t.nrr}</td>
+    `;
+    body.appendChild(row);
+  });
+};
+
+window.showStats = () => {
+  if (!tournament.data) return;
+  document.getElementById('statsScreen').classList.add('visible');
+  const topBat = document.getElementById('topBatsmenBody');
+  const topRecords = document.getElementById('topRecordsBody');
+  topBat.innerHTML = '';
+  topRecords.innerHTML = '';
+
+  const allStats = Object.values(tournament.data.stats);
+  
+  // 1. Orange Cap / Most Runs
+  const sortedByRuns = [...allStats].sort((a, b) => b.batting.runs - a.batting.runs);
+  const top10Runs = sortedByRuns.slice(0, 10);
+  const leaderRuns = sortedByRuns[0]?.batting.runs || 0;
+
+  top10Runs.forEach(s => {
+    const avg = s.batting.innings > 0 ? (s.batting.runs / s.batting.innings).toFixed(1) : "0.0";
+    const sr = s.batting.ballsFaced > 0 ? ((s.batting.runs / s.batting.ballsFaced) * 100).toFixed(1) : "0.0";
+    topBat.innerHTML += `<tr><td>${s.name}</td><td>${s.batting.runs}</td><td>${avg}</td><td>${sr}</td></tr>`;
+  });
+
+  // 2. Specialized Records
+  // - Highest Score
+  const bestHS = [...allStats].sort((a, b) => b.batting.highScore - a.batting.highScore)[0];
+  // - Best Average (minimum 5 innings played to avoid outliers)
+  const bestAvg = [...allStats].filter(s => s.batting.innings >= 5).sort((a, b) => (b.batting.runs / b.batting.innings) - (a.batting.runs / a.batting.innings))[0];
+  // - Best Strike Rate (minimum 10% of top run-scorer's runs to ensure significance)
+  const bestSR = [...allStats].filter(s => s.batting.runs >= leaderRuns * 0.1).sort((a, b) => (b.batting.runs / b.batting.ballsFaced) - (a.batting.runs / a.batting.ballsFaced))[0];
+  // - Most Fifties
+  const most50s = [...allStats].sort((a, b) => b.batting.fifties - a.batting.fifties)[0];
+  // - Most Hundreds
+  const most100s = [...allStats].sort((a, b) => b.batting.hundreds - a.batting.hundreds)[0];
+
+  const records = [
+    { label: "HIGHEST SCORE", p: bestHS, val: bestHS?.batting.highScore },
+    { label: "BEST AVERAGE", p: bestAvg, val: bestAvg ? (bestAvg.batting.runs / bestAvg.batting.innings).toFixed(1) : "0.0" },
+    { label: "BEST STRIKE RATE", p: bestSR, val: bestSR ? ((bestSR.batting.runs / bestSR.batting.ballsFaced) * 100).toFixed(1) : "0.0" },
+    { label: "MOST FIFTIES", p: most50s, val: most50s?.batting.fifties },
+    { label: "MOST HUNDREDS", p: most100s, val: most100s?.batting.hundreds },
+  ];
+
+  records.forEach(r => {
+    if (r.p) {
+      topRecords.innerHTML += `<tr><td>${r.label}</td><td>${r.p.name}</td><td>${r.val}</td></tr>`;
+    }
+  });
+};
+
+window.resetTournament = () => {
+  if (confirm("Are you sure you want to reset the tournament? All progress will be lost.")) {
+    tournament.reset();
+    window.startIPLMode();
+  }
+};
+
+window.showTeams = () => {
+  document.getElementById('teamsScreen').classList.add('visible');
+  const grid = document.getElementById('teamsFranchiseGrid');
+  grid.innerHTML = '';
+
+  IPL_ROSTER.teams.forEach(t => {
+    const btn = document.createElement('div');
+    btn.className = 'opp-btn';
+    btn.innerHTML = `<span class="opp-flag">${t.flagEmoji}</span><span>${t.shortName}</span>`;
+    btn.onclick = () => window.showTeamStats(t.id);
+    grid.appendChild(btn);
+  });
+  
+  // Show first team by default if not already showing something
+  if (document.getElementById('teamDetailsCard').style.display === 'none') {
+    window.showTeamStats(IPL_ROSTER.teams[0].id);
+  }
+};
+
+window.showTeamStats = (teamId) => {
+  const team = getIPLTeam(teamId);
+  const card = document.getElementById('teamDetailsCard');
+  card.style.display = 'block';
+  card.style.borderColor = team.color;
+  
+  document.getElementById('detailTeamName').innerText = team.name.toUpperCase();
+  document.getElementById('detailTeamName').style.color = team.color;
+  
+  // Highlight selected team in grid
+  document.querySelectorAll('#teamsFranchiseGrid .opp-btn').forEach(btn => {
+    if (btn.innerText.includes(team.shortName)) btn.classList.add('selected');
+    else btn.classList.remove('selected');
+  });
+
+  const body = document.getElementById('teamPlayersBody');
+  body.innerHTML = '';
+
+  team.players.forEach(p => {
+    const s = tournament.data.stats[p.name] || { batting: { matches: 0, runs: 0, ballsFaced: 0, fours: 0, sixes: 0, lastFive: [] } };
+    const b = s.batting;
+    const avg = b.innings > 0 ? (b.runs / b.innings).toFixed(1) : (b.matches > 0 ? (b.runs / b.matches).toFixed(1) : "0.0");
+    const sr = b.ballsFaced > 0 ? ((b.runs / b.ballsFaced) * 100).toFixed(1) : "0.0";
+    
+    const last5 = b.lastFive || [];
+    const last5Str = last5.length > 0 ? last5.join(', ') : '-';
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${p.name}</td>
+      <td>${b.matches}</td>
+      <td>${b.runs}</td>
+      <td>${b.ballsFaced}</td>
+      <td>${b.fours || 0}</td>
+      <td>${b.sixes || 0}</td>
+      <td>${avg}</td>
+      <td>${sr}</td>
+      <td style="font-size: 12px; color: rgba(255,255,255,0.4)">${last5Str}</td>
+    `;
+    body.appendChild(row);
+  });
+};
+
+window.playNextTournamentMatch = () => {
+  const match = tournament.getNextMatch();
+  if (!match) return;
+
+  const userTeamId = tournament.data.userTeamId;
+  const oppId = match.team1 === userTeamId ? match.team2 : match.team1;
+  
+  // Coin Toss
+  alert(`Match ${match.matchId}: ${getIPLTeam(userTeamId).name} vs ${getIPLTeam(oppId).name}\n\nToss: ${getIPLTeam(userTeamId).name} won the toss and elected to BAT first.`);
+  
+  initMatch(userTeamId, oppId, true);
+};
+
+function initMatch(userTeamId, oppId, isTournament = false) {
+  userTeam = isTournament ? getIPLTeam(userTeamId) : getTeam(userTeamId); 
+  opponentTeam = isTournament ? getIPLTeam(oppId) : getTeam(oppId);
+  isTournamentMode = isTournament;
   
   // Setup specialists
-  const specialists = getBowlers(opponentTeam.id);
+  const specialists = isTournament ? opponentTeam.players.slice(-5) : getBowlers(opponentTeam.id);
   bowlerStats = specialists.map(p => ({ name: p.name, overs: 0, runs: 0, wickets: 0, balls: 0 }));
   
-  // Setup target: 110 to 240 runs
-  matchState.target = 110 + Math.floor(Math.random() * 131);
+  if (!isTournament) {
+    // Quick Play target
+    matchState.target = Math.floor((config.tournamentSettings.minTargetRPO + Math.random() * (config.tournamentSettings.maxTargetRPO - config.tournamentSettings.minTargetRPO)) * 20); 
+  } else {
+    // Tournament target
+    const avgRate = config.tournamentSettings.minTargetRPO + Math.random() * (config.tournamentSettings.maxTargetRPO - config.tournamentSettings.minTargetRPO);
+    matchState.target = Math.floor(avgRate * config.tournamentSettings.oversPerMatch);
+  }
+
+  matchState.totalRuns = 0;
+  matchState.wickets = 0;
+  matchState.inningsBalls = 0;
+  matchState.overRunsStart = 0;
   matchState.overHistory = [];
+  matchState.strikerIndex = 0;
+  matchState.nonStrikerIndex = 1;
+
   document.getElementById('sb-target-score').innerText = matchState.target;
   
   // Setup batsmen
@@ -118,7 +433,7 @@ function initMatch(userTeamId, oppId) {
   batsmenStats = userTeam.players.map(p => ({ name: p.name, runs: 0, balls: 0, fours: 0, sixes: 0, status: 'not out' }));
   
   // Update UI Initial
-  document.getElementById('sb-bat-flag').innerText = userTeam.flagEmoji;
+  document.getElementById('sb-bat-flag').innerText = userTeam.flagEmoji || '🏏';
   document.getElementById('sb-bat-short').innerText = userTeam.shortName;
   document.getElementById('sb-bat-team-name').innerText = userTeam.name.toUpperCase();
   document.getElementById('sb-bowl-team-name').innerText = opponentTeam.shortName.toUpperCase();
@@ -127,7 +442,8 @@ function initMatch(userTeamId, oppId) {
   
   initFielders(fielders, bowlerModel, wkModel);
   isMatchStarted = true;
-  document.getElementById('teamSelectModal').style.display = 'none';
+  document.getElementById('teamSelectModal').classList.add('hidden');
+  document.getElementById('tournamentHub').classList.remove('visible');
   document.getElementById('gameUI').style.display = 'block';
   
   // Set team colors for all fielders, bowler and keeper
@@ -178,7 +494,7 @@ function updateUIScorebar() {
 
   // Update Target Needs
   const runsNeeded = Math.max(0, matchState.target - matchState.totalRuns);
-  const totalInningsBalls = 120; // 20 Overs
+  const totalInningsBalls = (isTournamentMode ? config.tournamentSettings.oversPerMatch : 20) * 6; 
   const ballsLeft = Math.max(0, totalInningsBalls - matchState.inningsBalls);
   const needStats = document.getElementById('sb-need-stats');
   if (needStats) {
@@ -339,18 +655,35 @@ function toggleScorecard() {
 
 function updateMatchState(runsScored, isWicket = false) {
   matchState.inningsBalls++;
-  const striker = batsmenStats[matchState.strikerIndex];
+  const activeStrikerIndex = matchState.strikerIndex; // CAPTURE NOW
+  const striker = batsmenStats[activeStrikerIndex];
   const bowler = bowlerStats[currentBowlerIndex];
   
   striker.balls++;
   bowler.balls++;
   
+  let dismissedIndex = -1;
   if (isWicket) {
     matchState.wickets++;
     bowler.wickets++;
     striker.status = 'caught';
+    dismissedIndex = activeStrikerIndex;
+    
     matchState.strikerIndex = Math.max(matchState.strikerIndex, matchState.nonStrikerIndex) + 1;
     if (matchState.strikerIndex >= 11) matchState.strikerIndex = 10; 
+
+    // Show Out Screen using the captured index
+    const dismissed = batsmenStats[dismissedIndex];
+    const sr = dismissed.balls > 0 ? ((dismissed.runs / dismissed.balls) * 100).toFixed(1) : '0.0';
+    document.getElementById('out-name').innerText = dismissed.name.toUpperCase();
+    document.getElementById('out-runs').innerText = dismissed.runs;
+    document.getElementById('out-balls').innerText = dismissed.balls;
+    document.getElementById('out-fours').innerText = dismissed.fours;
+    document.getElementById('out-sixes').innerText = dismissed.sixes;
+    document.getElementById('out-sr').innerText = sr;
+    const outEl = document.getElementById('outScreen');
+    outEl.classList.add('visible');
+    setTimeout(() => outEl.classList.remove('visible'), 2000); // Reduced to 2s
   } else {
     matchState.totalRuns += runsScored;
     striker.runs += runsScored;
@@ -361,6 +694,16 @@ function updateMatchState(runsScored, isWicket = false) {
     else showBriefMessage("DOT BALL", "#90A4AE");
   }
   
+  // ── Wagon Wheel: record landing position ──
+  const landing = firstBouncePos || { x: ballObject.position.x, z: ballObject.position.z };
+  wagonWheelData.push({ 
+    x: landing.x, 
+    z: landing.z, 
+    runs: runsScored, 
+    isAerial: !ballHasBouncedAfterHit,
+    batterIndex: activeStrikerIndex 
+  });
+
   // Track ball in over history
   const ballLabel = isWicket ? 'W' : runsScored;
   matchState.overHistory.push({ label: ballLabel, runs: runsScored, isWicket });
@@ -373,14 +716,33 @@ function updateMatchState(runsScored, isWicket = false) {
   
   // Over end
   if (matchState.inningsBalls % 6 === 0) {
+    // ── End of Over Screen ──
+    const overNum = matchState.inningsBalls / 6;
+    const overRuns = matchState.totalRuns - matchState.overRunsStart;
+    matchState.overRunsStart = matchState.totalRuns;
+    const lastBowler = bowlerStats[currentBowlerIndex];
+    const striker = batsmenStats[matchState.strikerIndex];
+    const nstriker = batsmenStats[matchState.nonStrikerIndex];
+    const runsNeeded = Math.max(0, matchState.target - matchState.totalRuns);
+    const totalInningsBalls = (isTournamentMode ? config.tournamentSettings.oversPerMatch : 20) * 6;
+    const ballsLeft = Math.max(0, totalInningsBalls - matchState.inningsBalls);
+    document.getElementById('oe-over-number').innerText = `OVER ${overNum}`;
+    document.getElementById('oe-bowler').innerText = lastBowler.name;
+    document.getElementById('oe-over-runs').innerText = `${overRuns} RUNS`;
+    document.getElementById('oe-striker').innerText = `${striker.name} ${striker.runs}*(${striker.balls})`;
+    document.getElementById('oe-nstriker').innerText = `${nstriker.name} ${nstriker.runs}(${nstriker.balls})`;
+    document.getElementById('oe-need').innerText = `${runsNeeded} RUNS`;
+    document.getElementById('oe-balls-left').innerText = `${ballsLeft} BALLS`;
+    const oeEl = document.getElementById('overEndScreen');
+    oeEl.classList.add('visible');
+    setTimeout(() => oeEl.classList.remove('visible'), 4000); // Reduced to 4s
+
     matchState.overHistory = []; // Reset history for new over
     let temp = matchState.strikerIndex;
     matchState.strikerIndex = matchState.nonStrikerIndex;
     matchState.nonStrikerIndex = temp;
-    
-    // Change bowler
     currentBowlerIndex = (currentBowlerIndex + 1) % 5;
-    updateFieldersEndOfOver(matchState.inningsBalls / 6);
+    updateFieldersEndOfOver(overNum);
   }
   
   updateUIScorebar();
@@ -389,12 +751,76 @@ function updateMatchState(runsScored, isWicket = false) {
   lb.innerText = isWicket ? 'W' : runsScored;
   lb.style.background = runsScored === 4 || runsScored === 6 ? '#43A047' : (isWicket ? '#D32F2F' : 'rgba(255,255,255,0.1)');
 
-  // Hide contact diagram when ball is dead
-  document.getElementById('contactDiagram').style.display = 'none';
+  // Keep contact diagram visible until next ball
+  // document.getElementById('contactDiagram').style.display = 'none'; // Removed hiding
+
+  checkMatchEnd();
+}
+
+function checkMatchEnd() {
+  const runsNeeded = matchState.target - matchState.totalRuns;
+  const totalInningsBalls = (isTournamentMode ? config.tournamentSettings.oversPerMatch : 20) * 6;
+  const ballsLeft = totalInningsBalls - matchState.inningsBalls;
+  const isWicketsAllOut = matchState.wickets >= 10;
+  
+  let endType = null; // 'win', 'loss'
+  
+  if (runsNeeded <= 0) {
+    endType = 'win';
+  } else if (ballsLeft <= 0 || isWicketsAllOut) {
+    endType = 'loss';
+  }
+
+  if (endType) {
+    isMatchStarted = false;
+    setTimeout(() => showMatchResult(endType), 1500);
+  }
+}
+
+function showMatchResult(type) {
+  document.getElementById('gameUI').style.display = 'none';
+  const screen = document.getElementById('matchResultScreen');
+  screen.style.display = 'flex';
+
+  const title = document.getElementById('resultTitle');
+  const summary = document.getElementById('resultSummary');
+  const details = document.getElementById('resultDetails');
+
+  if (type === 'win') {
+    title.innerText = "VICTORY!";
+    title.className = "result-title victory";
+    summary.innerText = `${userTeam.name} won by ${10 - matchState.wickets} wickets`;
+  } else {
+    title.innerText = "DEFEAT";
+    title.className = "result-title defeat";
+    const runsShort = matchState.target - matchState.totalRuns;
+    summary.innerText = `${userTeam.name} lost by ${runsShort} runs`;
+  }
+
+  details.innerText = `Final Score: ${matchState.totalRuns}/${matchState.wickets} in ${Math.floor(matchState.inningsBalls / 6)}.${matchState.inningsBalls % 6} overs`;
+
+  if (isTournamentMode) {
+    const result = {
+      winner: type === 'win' ? userTeam.id : opponentTeam.id,
+      team1: { runs: matchState.totalRuns, wickets: matchState.wickets, overs: parseFloat((matchState.inningsBalls / 6).toFixed(1)) },
+      team2: { runs: matchState.target - 1, wickets: 5, overs: config.tournamentSettings.oversPerMatch } 
+    };
+    // Pass actual stats
+    tournament.recordUserMatchResult(result, batsmenStats, bowlerStats);
+  }
 }
 
 function launchBall() {
+  // Pause button if any summary screen or scorecard is active
+  if (document.getElementById('outScreen').classList.contains('visible')) return;
+  if (document.getElementById('overEndScreen').classList.contains('visible')) return;
+  if (document.getElementById('wagonWheelOverlay').classList.contains('visible')) return;
+  if (document.getElementById('scorecardOverlay').classList.contains('visible')) return;
+  
   if (isBallActive || runState.isRunning || runState.isThrowing) return;
+  
+  // Hide impact diagram when new ball starts
+  document.getElementById('contactDiagram').style.display = 'none';
   
   isBallActive = false;
   isBallHit = false;
@@ -413,7 +839,8 @@ function launchBall() {
   startBowlerRunUp(config.bowlerSettings.runUpDuration);
   
   // Bowler classification logic
-  const currentBowler = getBowlers(opponentTeam.id)[currentBowlerIndex];
+  const specialists = isTournamentMode ? opponentTeam.players.slice(-5) : getBowlers(opponentTeam.id);
+  const currentBowler = specialists[currentBowlerIndex];
   const isSpinner = currentBowler.bowlType === 'spin';
 
   // Spinners have more speed variation
@@ -488,7 +915,8 @@ connectSocket((data) => {
         indicator.style.display = 'none';
       } else {
         indicator.style.display = 'flex';
-        label.innerText = shotMode.toUpperCase();
+        // Display the ACTUAL mode active (not the button name)
+        label.innerText = shotMode === 'loft' ? 'LOFT' : 'STROKE';
         document.getElementById('modeDot').style.background = shotMode === 'loft' ? '#FF5252' : '#4CAF50';
       }
     }
@@ -521,22 +949,189 @@ connectSocket((data) => {
   currentWorldAngularVelocity.copy(gyroVec).applyQuaternion(batObject.quaternion);
   currentSwingPower = Math.max(0, Math.min(1, rawAcc.length() / config.MAX_EXPECTED_ACC));
 
-  if (angularSpeed > 0.01) {
-    const fwd = new THREE.Vector3(0,0,1).applyQuaternion(rawOrientation).normalize();
-    const rgt = new THREE.Vector3(1,0,0).applyQuaternion(rawOrientation).normalize();
-    const up = new THREE.Vector3(0,1,0).applyQuaternion(rawOrientation).normalize();
-    batObject.position.add(fwd.multiplyScalar(gyroVec.z * 0.004));
-    batObject.position.add(rgt.multiplyScalar(gyroVec.y * 0.003));
-    batObject.position.add(up.multiplyScalar(gyroVec.x * 0.002));
-  }
-  batObject.position.add(worldAcc.multiplyScalar(config.POSITION_SCALE * 0.5));
+  // --- Hand-Tracked Pivot (direct, no velocity lag) ---
+  const bt = config.batTranslation;
+
+  // Directly shift displacement by linear acceleration — immediate response
+  batHandDisplacement.addScaledVector(worldAcc, bt.sensitivity);
+
+  // Decay displacement each packet so it returns to rest when hand is still
+  batHandDisplacement.multiplyScalar(bt.decayFactor);
+
+  // Clamp to max travel bounds
+  const md = bt.maxDisplacement;
+  batHandDisplacement.x = Math.max(-md.x, Math.min(md.x, batHandDisplacement.x));
+  batHandDisplacement.y = Math.max(-md.y, Math.min(md.y, batHandDisplacement.y));
+  batHandDisplacement.z = Math.max(-md.z, Math.min(md.z, batHandDisplacement.z));
+
+  // Apply: rest position + hand displacement
+  batObject.position.copy(restPosition).add(batHandDisplacement);
 });
 
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space') launchBall();
   if (e.code === 'KeyS') toggleScorecard();
-  if (e.code === 'KeyR') calibrationQuaternion.copy(currentOrientation).invert();
+  if (e.code === 'KeyR') {
+    calibrationQuaternion.copy(currentOrientation).invert();
+    batHandDisplacement.set(0, 0, 0);
+  }
+  if (e.code === 'KeyW') {
+    wagonWheelVisible = !wagonWheelVisible;
+    const overlay = document.getElementById('wagonWheelOverlay');
+    if (wagonWheelVisible) {
+      overlay.classList.add('visible');
+      // Rebuild batter tabs
+      const tabs = document.getElementById('wwTabs');
+      tabs.innerHTML = `<div class="ww-tab active" data-idx="-1" onclick="switchWagonTab(this,-1)">TEAM</div>`;
+      batsmenStats.forEach((b, i) => {
+        const t = document.createElement('div');
+        t.className = 'ww-tab';
+        t.dataset.idx = i;
+        t.innerText = b.name.split(' ').pop().toUpperCase(); // Last name only
+        t.onclick = () => switchWagonTab(t, i);
+        tabs.appendChild(t);
+      });
+      drawWagonWheel(wagonWheelTab);
+    } else {
+      overlay.classList.remove('visible');
+    }
+  }
 });
+
+/* ================================
+   🎡 WAGON WHEEL
+================================ */
+
+window.switchWagonTab = function(el, idx) {
+  document.querySelectorAll('.ww-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  wagonWheelTab = idx;
+  drawWagonWheel(idx);
+};
+
+function drawWagonWheel(filterIdx) {
+  const canvas = document.getElementById('wagonWheelCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const boundaryR = W * 0.46;
+  const infieldR = W * 0.22; // Reduced infield circle size
+  const pitchW = W * 0.04, pitchH = H * 0.2;
+
+  ctx.clearRect(0, 0, W, H);
+  
+  // Outer circle (Boundary)
+  ctx.beginPath(); ctx.arc(cx, cy, boundaryR + 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a2a0a'; ctx.fill();
+
+  // Outfield
+  ctx.beginPath(); ctx.arc(cx, cy, boundaryR, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a4a1a'; ctx.fill();
+
+  // Infield circle
+  ctx.beginPath(); ctx.arc(cx, cy, infieldR, 0, Math.PI * 2);
+  ctx.fillStyle = '#22552a'; ctx.fill();
+
+  // Boundary rope
+  ctx.beginPath(); ctx.arc(cx, cy, boundaryR, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Infield ring
+  ctx.beginPath(); ctx.arc(cx, cy, infieldR, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+
+  // Pitch
+  ctx.fillStyle = '#D2B48C';
+  ctx.fillRect(cx - pitchW / 2, cy - pitchH / 2, pitchW, pitchH);
+
+  // Direction labels
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.font = '11px Rajdhani, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('COVER', cx + boundaryR * 0.65, cy - boundaryR * 0.65);
+  ctx.fillText('MID-ON', cx - boundaryR * 0.65, cy - boundaryR * 0.65);
+  ctx.fillText('FINE LEG', cx + boundaryR * 0.55, cy + boundaryR * 0.75);
+  ctx.fillText('SQUARE', cx - boundaryR * 0.78, cy);
+
+  // Draw shots
+  const subset = filterIdx === -1
+    ? wagonWheelData
+    : wagonWheelData.filter(d => d.batterIndex === filterIdx);
+
+  const mapScale = boundaryR / (config.BOUNDARY_R || 40);
+
+  subset.forEach(shot => {
+    const sx_raw = cx + shot.x * mapScale;
+    const sz_raw = cy + shot.z * mapScale;
+    
+    const startX = cx; // Batsman x is always center
+    const startZ = cy + (4.5 * mapScale); // Batsman z is at 4.5
+
+    // For boundaries, ensure the line extends to or slightly past the visual boundary
+    let sx = sx_raw;
+    let sz = sz_raw;
+    if (shot.runs >= 4) {
+      const vecX = sx_raw - startX;
+      const vecZ = sz_raw - startZ;
+      const distToLanding = Math.sqrt(vecX**2 + vecZ**2);
+      // We want to extend it relative to ground center (cx,cy) for the visual boundary
+      const distFromCenter = Math.sqrt((sx_raw - cx)**2 + (sz_raw - cy)**2);
+      if (distFromCenter < boundaryR) {
+        const factor = (boundaryR + 2) / distFromCenter;
+        sx = cx + (sx_raw - cx) * factor;
+        sz = cy + (sz_raw - cy) * factor;
+      }
+    }
+
+    let color;
+    if (shot.runs === 6) color = '#FF5252';
+    else if (shot.runs === 4) color = '#4CAF50';
+    else if (shot.runs > 0) color = '#FFD54F';
+    else color = 'rgba(255,255,255,0.3)';
+
+    // Line from striker to landing
+    ctx.beginPath();
+    ctx.moveTo(startX, startZ);
+    
+    if (shot.isAerial) {
+      // Draw quadratic curve for aerial shots
+      const midX = (startX + sx) / 2;
+      const midZ = (startZ + sz) / 2;
+      // Offset midpoint slightly to the side to show a curve
+      const dx = sx - startX;
+      const dz = sz - startZ;
+      const perpX = -dz * 0.15;
+      const perpZ = dx * 0.15;
+      ctx.quadraticCurveTo(midX + perpX, midZ + perpZ, sx, sz);
+    } else {
+      ctx.lineTo(sx, sz);
+    }
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = shot.runs >= 4 ? 2 : 1;
+    ctx.globalAlpha = 0.7;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Dot at landing
+    ctx.beginPath(); ctx.arc(sx, sz, shot.runs >= 4 ? 4 : 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill();
+  });
+
+  // Legend
+  const legend = [['#FF5252','SIX'], ['#4CAF50','FOUR'], ['#FFD54F','1-3'], ['rgba(255,255,255,0.3)','DOT']];
+  let lx = cx - boundaryR + 8, ly = H - 18;
+  ctx.font = 'bold 11px Rajdhani, sans-serif'; ctx.textAlign = 'left';
+  legend.forEach(([col, lbl]) => {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(lx + 5, ly - 4, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillText(lbl, lx + 13, ly);
+    lx += 56;
+  });
+
+  // Shot count
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.textAlign = 'right';
+  ctx.fillText(`${subset.length} SHOT${subset.length !== 1 ? 'S' : ''}`, W - 8, H - 10);
+}
 
 /* ================================
    📍 MINIMAP RENDERER
@@ -578,7 +1173,24 @@ function drawMinimap() {
     ctx.stroke();
   }
 
-  if (isBallActive || isBallHit) drawDot(ballObject.position, '#FFFF00', 3.5);
+  // Ball trail
+  if ((isBallActive || isBallHit) && ballTrail.length > 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,100,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.moveTo(cx + ballTrail[0].x * scale, cy + ballTrail[0].z * scale);
+    for (let i = 1; i < ballTrail.length; i++) {
+      ctx.lineTo(cx + ballTrail[i].x * scale, cy + ballTrail[i].z * scale);
+    }
+    ctx.stroke();
+  }
+
+  if (isBallActive || isBallHit) {
+    // Push current position to trail (cap at 30 points)
+    ballTrail.push({ x: ballObject.position.x, z: ballObject.position.z });
+    if (ballTrail.length > 30) ballTrail.shift();
+    drawDot(ballObject.position, '#FFFF00', 3.5);
+  }
 }
 
 function drawRunnersPiP() {
@@ -704,6 +1316,7 @@ function animate(time) {
        let runs = ballHasBouncedAfterHit ? 4 : 6;
        isBallHit = false; runState.isRunning = false; runState.isThrowing = false;
        document.getElementById('pipMinimap').style.display = 'none';
+       currentCameraMode = CAMERA_MODES.BATSMAN; // Return camera to batting view
        updateMatchState(runs);
     } else {
        const fieldRes = updateFielderChasing(dt, ballObject, ballVelocity, isAirborne);
@@ -718,12 +1331,12 @@ function animate(time) {
              isBallHit = false; runState.isThrowing = true; runState.isRunning = false;
              
              // Runners run to the closest end
-             if (runState.runnerProgress > 0.5) {
-                // More than halfway, complete this run
+             if (runState.runnerProgress > 0.7) {
+                // More than 70%, complete this run
                 runState.targetRuns = runState.runsAttempted + 1;
                 runState.targetProgress = 1.0;
              } else {
-                // Less than halfway, run back
+                // Less than 70%, run back
                 runState.targetRuns = runState.runsAttempted;
                 runState.targetProgress = 0.0;
              }
@@ -760,6 +1373,7 @@ function animate(time) {
         updateMatchState(runState.targetRuns);
         runState.isThrowing = false;
         document.getElementById('pipMinimap').style.display = 'none';
+        currentCameraMode = CAMERA_MODES.BATSMAN; // Return camera to batting view
       }
     } else {
       runState.runnerProgress += runSpeed;

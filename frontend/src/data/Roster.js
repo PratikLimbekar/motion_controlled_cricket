@@ -23,7 +23,7 @@ export const ROSTER = {
       ]
     },
     {
-      id: 'england', name: 'England', shortName: 'ENG', color: '#E53935', flagEmoji: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+      id: 'england', name: 'England', shortName: 'ENG', color: '#E53935', flagEmoji: 'EN',
       players: [
         { name: "Jos Buttler", skill: 91 }, { name: "Phil Salt", skill: 83 },
         { name: "Will Jacks", skill: 81, bowlType: 'spin' }, { name: "Jonny Bairstow", skill: 85 },
@@ -34,7 +34,7 @@ export const ROSTER = {
       ]
     },
     {
-      id: 'south_africa', name: 'South Africa', shortName: 'RSA', color: '#43A047', flagEmoji: '🇿🇦',
+      id: 'south_africa', name: 'South Africa', shortName: 'RSA', color: '#43A047', flagEmoji: 'RSA',
       players: [
         { name: "Quinton de Kock", skill: 89 }, { name: "Reeza Hendricks", skill: 81 },
         { name: "Rassie vd Dussen", skill: 84 }, { name: "Aiden Markram", skill: 86, bowlType: 'spin' },
@@ -67,7 +67,7 @@ export const ROSTER = {
       ]
     },
     {
-      id: 'sri_lanka', name: 'Sri Lanka', shortName: 'SL', color: '#1A237E', flagEmoji: '🇱🇰',
+      id: 'sri_lanka', name: 'Sri Lanka', shortName: 'SL', color: '#1A237E', flagEmoji: 'SL',
       players: [
         { name: "Pathum Nissanka", skill: 84 }, { name: "Kusal Mendis", skill: 83 },
         { name: "Sadeera Samarawickrama", skill: 81 }, { name: "Charith Asalanka", skill: 82 },
@@ -78,7 +78,7 @@ export const ROSTER = {
       ]
     },
     {
-      id: 'west_indies', name: 'West Indies', shortName: 'WI', color: '#880E4F', flagEmoji: '🏝️',
+      id: 'west_indies', name: 'West Indies', shortName: 'WI', color: '#880E4F', flagEmoji: 'WI',
       players: [
         { name: "Brandon King", skill: 82 }, { name: "Kyle Mayers", skill: 81, bowlType: 'fast' },
         { name: "Nicholas Pooran", skill: 89 }, { name: "Shai Hope", skill: 85 },
@@ -100,7 +100,7 @@ export const ROSTER = {
       ]
     },
     {
-      id: 'afghanistan', name: 'Afghanistan', shortName: 'AFG', color: '#0D47A1', flagEmoji: '🇦🇫',
+      id: 'afghanistan', name: 'Afghanistan', shortName: 'AFG', color: '#0D47A1', flagEmoji: 'AFG',
       players: [
         { name: "Rahmanullah Gurbaz", skill: 84 }, { name: "Ibrahim Zadran", skill: 83 },
         { name: "Rahmat Shah", skill: 80 }, { name: "Hashmatullah Shahidi", skill: 81 },

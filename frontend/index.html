@@ -5,282 +5,444 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cricket Motion Simulator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --primary: #4FC3F7;
+      --primary-glow: rgba(79, 195, 247, 0.4);
+      --accent: #FFD54F;
+      --bg-dark: #050a14;
+      --card-bg: rgba(255, 255, 255, 0.05);
+      --border: rgba(255, 255, 255, 0.1);
+      --shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #000; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
-    #app { width: 100vw; height: 100vh; display: block; position: relative; }
+    #app { width: 100vw; height: 100vh; display: block; position: fixed; inset: 0; z-index: 0; }
 
-    /* ─── Team Select Modal ───────────────────────────────── */
-    #teamSelectModal {
+    /* ─── Base Components ───────────────────────────────── */
+    .modal-overlay {
       position: fixed; inset: 0; z-index: 1000;
-      background: linear-gradient(135deg, #0a1628 0%, #0d2545 50%, #0a1628 100%);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 20px;
+      background: radial-gradient(circle at center, #0a1628 0%, #050a14 100%);
+      display: none; flex-direction: column; padding: 40px;
+      overflow-y: auto; font-family: 'Inter', sans-serif;
+      pointer-events: auto;
     }
-    #teamSelectModal h1 {
-      font-family: 'Rajdhani', sans-serif; font-size: 36px; font-weight: 700;
-      letter-spacing: 3px; color: #fff;
-      text-shadow: 0 0 30px rgba(30,136,229,0.8);
-      margin: 0;
+    .modal-overlay.visible { display: flex; }
+    .hidden { display: none !important; }
+
+    .header-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 40px; border-bottom: 1px solid var(--border); padding-bottom: 20px;
+      flex-shrink: 0;
     }
-    #teamSelectModal .subtitle {
-      font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 2px; margin-top: -10px;
+    .header-title { font-family: 'Rajdhani', sans-serif; font-size: 32px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+
+    /* ─── Home Screen ────────────────────────────────────── */
+    #homeScreen {
+      position: fixed; inset: 0; z-index: 1100;
+      background: radial-gradient(circle at center, #1a2a44 0%, #0a1628 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 40px;
+      pointer-events: auto;
     }
-    .ts-container {
-      display: flex; gap: 40px; width: 100%; max-width: 900px; padding: 20px;
+    .home-title-group { text-align: center; }
+    .home-title { 
+      font-family: 'Rajdhani', sans-serif; font-size: 82px; font-weight: 800; 
+      letter-spacing: 12px; color: #fff; text-shadow: 0 0 50px var(--primary-glow);
+      margin: 0; line-height: 1;
     }
-    .ts-column { flex: 1; display: flex; flex-direction: column; gap: 15px; }
-    .ts-column h3 { font-family: 'Rajdhani', sans-serif; font-size: 13px; letter-spacing: 3px; color: rgba(255,255,255,0.4); text-align: center; }
+    .home-subtitle { 
+      font-size: 16px; color: rgba(255,255,255,0.4); letter-spacing: 8px; 
+      text-transform: uppercase; margin-top: 15px; 
+    }
+    .home-btn-group { display: flex; gap: 40px; }
+    .home-btn {
+      width: 280px; height: 180px; background: var(--card-bg);
+      border: 1px solid var(--border); border-radius: 32px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      gap: 20px; position: relative; overflow: hidden;
+    }
+    .home-btn:hover {
+      background: rgba(255,255,255,0.08); border-color: var(--primary);
+      transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .home-btn span { font-family: 'Rajdhani', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: 2px; }
+    
+    /* ─── Team Selection ─────────────────────────────────── */
+    .ts-screen {
+      position: fixed; inset: 0; z-index: 1050;
+      background: var(--bg-dark); display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 30px;
+      pointer-events: auto;
+    }
+    .ts-screen.visible { display: flex; }
+    #teamSelectModal:not(.hidden) { display: flex; flex-direction: column; align-items: center; justify-content: center; position: fixed; inset: 0; background: var(--bg-dark); z-index: 1050; }
+
+    .ts-grid-layout { display: flex; gap: 60px; width: 100%; max-width: 1100px; padding: 20px; }
+    .ts-section { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+    .ts-section h3 { font-family: 'Rajdhani', sans-serif; font-size: 14px; letter-spacing: 4px; color: rgba(255,255,255,0.3); text-align: center; text-transform: uppercase; }
+    
     .team-grid {
-      display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
-      max-height: 400px; overflow-y: auto; padding-right: 10px;
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+      max-height: 440px; overflow-y: auto; padding-right: 15px;
     }
-    /* Scrollbar */
-    .team-grid::-webkit-scrollbar { width: 4px; }
-    .team-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+    .team-grid::-webkit-scrollbar { width: 6px; }
+    .team-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
 
     .opp-btn {
-      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 12px; padding: 12px 14px; cursor: pointer;
-      font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 600;
-      color: #fff; transition: all 0.2s;
-      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px; padding: 16px 20px; cursor: pointer;
+      font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
+      color: #fff; transition: all 0.25s; display: flex; align-items: center; gap: 12px;
+      text-align: left;
     }
-    .opp-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); transform: translateY(-1px); }
-    .opp-btn.selected { border-color: #4FC3F7; background: rgba(79,195,247,0.15); box-shadow: 0 0 15px rgba(79,195,247,0.2); }
-    .opp-flag { font-size: 18px; }
-    #startMatchBtn {
-      background: linear-gradient(135deg, #43A047, #2E7D32); border: none;
-      border-radius: 14px; padding: 18px 64px; cursor: pointer;
-      font-family: 'Rajdhani', sans-serif; font-size: 22px; font-weight: 700;
-      color: #fff; letter-spacing: 2px; transition: all 0.2s;
-      box-shadow: 0 8px 32px rgba(67,160,71,0.4);
-    }
-    #startMatchBtn:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(67,160,71,0.5); }
-    #startMatchBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .opp-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); transform: scale(1.02); }
+    .opp-btn.selected { border-color: var(--primary); background: rgba(79, 195, 247, 0.12); box-shadow: 0 0 20px rgba(79, 195, 247, 0.15); }
+    .opp-flag { font-size: 22px; }
 
-    /* ─── Game UI Layer ───────────────────────────────────── */
+    .action-btn {
+      background: linear-gradient(135deg, #4FC3F7, #1E88E5); border: none;
+      border-radius: 20px; padding: 20px 80px; cursor: pointer;
+      font-family: 'Rajdhani', sans-serif; font-size: 24px; font-weight: 700;
+      color: #fff; letter-spacing: 3px; transition: all 0.3s;
+      box-shadow: 0 8px 30px rgba(30, 136, 229, 0.3);
+    }
+    .action-btn:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(30, 136, 229, 0.4); }
+    .action-btn:disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(1); }
+
+    /* ─── Tournament Hub ─────────────────────────────────── */
+    .hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 1000px; margin: 0 auto; width: 100%; }
+    .hub-card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 24px; padding: 40px; display: flex; flex-direction: column; gap: 24px;
+      backdrop-filter: blur(10px);
+    }
+    .hub-next-match { grid-column: 1 / -1; align-items: center; text-align: center; }
+    .team-display { display: flex; align-items: center; gap: 40px; margin: 25px 0; }
+    .team-display .vs { font-family: 'Rajdhani', sans-serif; font-size: 32px; font-weight: 800; color: rgba(255,255,255,0.2); font-style: italic; }
+    .hub-team-logo { width: 100px; height: 100px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 50px; box-shadow: var(--shadow); }
+    .hub-team-name { font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+    
+    .hub-nav-btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .hub-nav-btn {
+      background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+      border-radius: 16px; padding: 18px; cursor: pointer; color: #fff;
+      font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700;
+      transition: all 0.2s; text-align: center; letter-spacing: 1px;
+    }
+    .hub-nav-btn:hover { background: var(--primary); color: #000; border-color: var(--primary); transform: translateY(-2px); }
+
+    /* ─── Tables & Data ──────────────────────────────────── */
+    .data-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .data-table th { text-align: left; padding: 16px; border-bottom: 2px solid var(--border); color: rgba(255,255,255,0.4); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
+    .data-table td { padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.04); font-family: 'Rajdhani', sans-serif; font-size: 17px; font-weight: 600; }
+    .row-user { background: rgba(79, 195, 247, 0.08); border-left: 4px solid var(--primary); }
+    
+    .fixture-row { display: flex; align-items: center; padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); gap: 24px; transition: 0.2s; }
+    .fixture-row:hover { background: rgba(255,255,255,0.03); }
+    .fixture-date { width: 110px; color: rgba(255,255,255,0.3); font-size: 12px; font-weight: 600; letter-spacing: 1px; }
+    .fixture-teams { flex: 1; display: flex; align-items: center; gap: 20px; font-family: 'Rajdhani', sans-serif; font-size: 20px; font-weight: 700; }
+    .fixture-result { width: 180px; text-align: right; font-family: 'Rajdhani', sans-serif; font-size: 15px; color: var(--primary); font-weight: 700; }
+
+    /* ─── Match Result Screen ─────────────────────────────── */
+    #matchResultScreen {
+      position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.96);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 40px; pointer-events: auto;
+    }
+    .result-title { font-family: 'Rajdhani', sans-serif; font-size: 96px; font-weight: 900; margin-bottom: 15px; letter-spacing: -2px; }
+    .result-summary { font-size: 28px; color: rgba(255,255,255,0.6); margin-bottom: 50px; font-weight: 500; }
+    .victory { color: #4CAF50; text-shadow: 0 0 50px rgba(76,175,80,0.4); }
+    .defeat { color: #F44336; text-shadow: 0 0 50px rgba(244,67,54,0.4); }
+
+    #tournamentOverScreen { position: fixed; inset: 0; z-index: 2100; pointer-events: auto; background: rgba(0,0,0,0.98); display: none; align-items: center; justify-content: center; flex-direction: column; }
+
+    /* ─── Game UI Layer (HUD) ────────────────────────────── */
     #gameUI { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 10; }
-
-    /* ─── Top-center: Runner PiP (moved from bottom) ─────── */
-    #pipMinimap {
-      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-      border: 2px solid rgba(255,255,255,0.5); border-radius: 10px;
-      background: rgba(0,0,0,0.7); display: none;
-    }
-
-    /* ─── Top-left: status + shot result ─────────────────── */
-    #topLeftHud {
-      position: absolute; top: 12px; left: 12px;
-      display: flex; flex-direction: column; gap: 10px;
-      z-index: 10;
-    }
-    #status {
-      font-size: 11px; font-weight: 500; padding: 4px 10px;
-      background: rgba(0,0,0,0.6); border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.15);
-      width: fit-content;
-    }
-    #contactDiagram {
-      width: 80px; height: 140px;
-      background: rgba(0,0,0,0.7);
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 8px;
-      padding: 10px;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      gap: 5px;
-      backdrop-filter: blur(5px);
-    }
-    #contactDiagram canvas {
-      width: 60px; height: 100px;
-    }
-    #contactDiagram label {
-      font-size: 10px; color: rgba(255,255,255,0.6); font-weight: 600; text-transform: uppercase;
-    }
+    #pipMinimap { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); border: 2px solid rgba(255,255,255,0.4); border-radius: 12px; background: rgba(0,0,0,0.8); display: none; }
+    #topLeftHud { position: absolute; top: 16px; left: 16px; display: flex; flex-direction: column; gap: 12px; z-index: 20; }
+    #status { font-size: 11px; font-weight: 700; padding: 6px 12px; background: rgba(0,0,0,0.7); border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); color: var(--primary); text-transform: uppercase; }
+    #contactDiagram { width: 90px; height: 150px; background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 12px; display: none; flex-direction: column; align-items: center; gap: 8px; backdrop-filter: blur(8px); }
+    #contactDiagram canvas { width: 60px; height: 100px; }
     #shotResult {
-      position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
-      font-family: 'Rajdhani', sans-serif; font-size: 82px; font-weight: 900;
-      color: #fff; text-shadow: 0 0 40px rgba(0,0,0,0.8);
+      position: fixed; top: 35%; left: 50%; transform: translate(-50%, -50%);
+      font-family: 'Rajdhani', sans-serif; font-size: 110px; font-weight: 900;
+      color: #fff; text-shadow: 0 10px 40px rgba(0,0,0,0.9);
       pointer-events: none; opacity: 0; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      letter-spacing: 4px; z-index: 100;
-      white-space: nowrap;
+      letter-spacing: 6px; z-index: 100; font-style: italic;
     }
-
-    /* ─── Shot mode indicator (top-center area) ─────────────*/
-    #shotModeIndicator {
-      position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
-      display: none; align-items: center; gap: 8px;
-      background: rgba(0,0,0,0.7); border-radius: 20px; padding: 6px 16px;
-      border: 1px solid rgba(255,255,255,0.2);
-    }
-    #shotModeIndicator .mode-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: #fff; animation: pulse 0.8s infinite;
-    }
-    #shotModeIndicator .mode-label {
-      font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 2px;
-    }
+    #shotModeIndicator { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 10px; background: rgba(0,0,0,0.8); border-radius: 30px; padding: 8px 20px; border: 1px solid var(--primary); }
+    #shotModeIndicator .mode-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: pulse 0.8s infinite; }
+    #shotModeIndicator .mode-label { font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 2px; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-    /* ─── Top-right: Minimap ──────────────────────────────── */
-    #minimap {
-      position: absolute; top: 12px; right: 12px;
-      border: 2px solid rgba(255,255,255,0.4); border-radius: 50%;
-      background: rgba(0,80,0,0.5);
-    }
-
-    /* ─── TV Scorebar (bottom) ────────────────────────────── */
+    #minimap { position: absolute; top: 12px; right: 12px; border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; background: rgba(0,80,0,0.5); }
     #scorebar {
       position: absolute; bottom: 0; left: 0; right: 0;
-      background: linear-gradient(to right, rgba(0,10,30,0.96) 0%, rgba(5,20,50,0.96) 50%, rgba(0,10,30,0.96) 100%);
-      border-top: 1px solid rgba(255,255,255,0.1);
-      display: flex; align-items: stretch; height: 72px;
-      font-family: 'Rajdhani', sans-serif;
+      background: linear-gradient(to right, rgba(0,10,30,0.98) 0%, rgba(5,20,50,0.98) 50%, rgba(0,10,30,0.98) 100%);
+      border-top: 1px solid rgba(255,255,255,0.15);
+      display: flex; align-items: stretch; height: 80px; font-family: 'Rajdhani', sans-serif;
     }
-    .sb-panel {
-      display: flex; align-items: center; padding: 0 16px; gap: 14px;
-    }
-    .sb-team-badge {
-      display: flex; flex-direction: column; align-items: center; gap: 2px;
-      min-width: 54px;
-    }
-    .sb-team-flag { font-size: 24px; }
-    .sb-team-short { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; color: rgba(255,255,255,0.7); }
-    .sb-batsmen { display: flex; flex-direction: column; gap: 2px; }
-    .sb-bat-row { display: flex; gap: 8px; align-items: baseline; }
-    .sb-bat-name { font-size: 14px; font-weight: 600; letter-spacing: 0.5px; color: #fff; min-width: 110px; }
-    .sb-bat-score { font-size: 14px; font-weight: 700; color: #FFD54F; min-width: 32px; }
+    .sb-panel { display: flex; align-items: center; padding: 0 20px; gap: 16px; }
+    .sb-team-badge { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 60px; }
+    .sb-team-flag { font-size: 28px; }
+    .sb-team-short { font-size: 12px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.7); }
+    .sb-batsmen { display: flex; flex-direction: column; gap: 4px; }
+    .sb-bat-row { display: flex; gap: 10px; align-items: baseline; }
+    .sb-bat-name { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; color: #fff; min-width: 120px; }
+    .sb-bat-score { font-size: 15px; font-weight: 700; color: var(--accent); min-width: 35px; }
     .sb-bat-balls { font-size: 12px; color: rgba(255,255,255,0.5); }
-    .sb-striker-dot { color: #4FC3F7; margin-right: 2px; }
-    #sb-divider1, #sb-divider2 {
-      width: 1px; background: rgba(255,255,255,0.15); flex-shrink: 0;
-    }
-    #sb-center {
-      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-    }
-    #sb-vs-line {
-      display: flex; align-items: center; gap: 10px;
-    }
-    #sb-bat-team-name { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; color: #fff; }
-    #sb-vs { font-size: 11px; color: rgba(255,255,255,0.4); }
-    #sb-bowl-team-name { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; color: rgba(255,255,255,0.7); }
-    #sb-score-line {
-      display: flex; align-items: baseline; gap: 8px;
-    }
-    #sb-score {
-      font-size: 26px; font-weight: 700; color: #fff; letter-spacing: 1px;
-    }
-    #sb-overs-crr {
-      font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.5px;
-    }
-    #sb-last-ball-badge {
-      font-size: 13px; font-weight: 700; padding: 1px 8px;
-      border-radius: 4px; background: rgba(255,255,255,0.1);
-      min-width: 28px; text-align: center;
-    }
-    #sb-right { min-width: 200px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding: 0 16px; }
-    #sb-bowler-name { font-size: 14px; font-weight: 700; letter-spacing: 0.5px; color: #fff; }
-    #sb-bowler-stats { font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.5px; }
-    
-    #sb-over-history { display: flex; gap: 4px; margin-top: 4px; }
-    .ball-icon {
-      width: 18px; height: 18px; border-radius: 50%;
-      background: rgba(255,255,255,0.12);
-      font-size: 10px; font-weight: 700;
-      display: flex; align-items: center; justify-content: center;
-      color: rgba(255,255,255,0.8);
-      border: 1px solid rgba(255,255,255,0.1);
-    }
+    .sb-striker-dot { color: var(--primary); margin-right: 4px; }
+    #sb-divider1, #sb-divider2 { width: 1px; background: rgba(255,255,255,0.15); flex-shrink: 0; }
+    #sb-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+    #sb-vs-line { display: flex; align-items: center; gap: 12px; }
+    #sb-bat-team-name { font-size: 14px; font-weight: 700; letter-spacing: 2px; color: #fff; text-transform: uppercase; }
+    #sb-vs { font-size: 11px; color: rgba(255,255,255,0.4); font-weight: 700; }
+    #sb-bowl-team-name { font-size: 14px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.6); text-transform: uppercase; }
+    #sb-score-line { display: flex; align-items: baseline; gap: 10px; }
+    #sb-score { font-size: 32px; font-weight: 800; color: #fff; letter-spacing: 1px; }
+    #sb-overs-crr { font-size: 13px; color: rgba(255,255,255,0.5); letter-spacing: 0.5px; font-weight: 600; }
+    #sb-last-ball-badge { font-size: 14px; font-weight: 700; padding: 2px 10px; border-radius: 6px; background: rgba(255,255,255,0.1); min-width: 32px; text-align: center; }
+    #sb-right { min-width: 220px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; padding: 0 20px; }
+    #sb-bowler-name { font-size: 15px; font-weight: 700; letter-spacing: 0.5px; color: #fff; }
+    #sb-bowler-stats { font-size: 12px; color: rgba(255,255,255,0.5); font-weight: 600; }
+    #sb-over-history { display: flex; gap: 6px; margin-top: 6px; }
+    .ball-icon { width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.1); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.1); }
     .ball-icon.boundary { background: #43A047; color: #fff; border-color: transparent; }
     .ball-icon.wicket { background: #D32F2F; color: #fff; border-color: transparent; }
+    #sb-target-panel { padding: 0 24px; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; background: rgba(255,213,79,0.04); }
+    .sb-target-label { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
+    #sb-target-score { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: 1px; }
 
-    #sb-target-panel {
-      padding: 0 20px; display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
-      background: rgba(255,213,79,0.06);
-    }
-    .sb-target-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #FFD54F; }
-    #sb-target-score { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: 1px; }
-
-    /* ─── Scorecard Overlay ───────────────────────────────── */
-    #scorecardOverlay {
-      position: fixed; inset: 0; z-index: 900;
-      background: rgba(0,8,20,0.92);
-      display: none; flex-direction: column; align-items: center; justify-content: center;
-      padding: 20px; pointer-events: auto;
-      backdrop-filter: blur(8px);
-    }
+    /* ─── Overlays & Tables ───────────────────────────────── */
+    #scorecardOverlay { position: fixed; inset: 0; z-index: 900; background: rgba(0,8,20,0.94); display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; pointer-events: auto; backdrop-filter: blur(12px); }
     #scorecardOverlay.visible { display: flex; }
-    .sc-container {
-      background: linear-gradient(135deg, rgba(5,20,50,0.98), rgba(10,28,60,0.98));
-      border: 1px solid rgba(255,255,255,0.15); border-radius: 20px;
-      max-width: 680px; width: 100%; padding: 28px;
-      box-shadow: 0 32px 80px rgba(0,0,0,0.8);
-      max-height: 90vh; overflow-y: auto;
-    }
-    .sc-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 20px; padding-bottom: 14px;
-      border-bottom: 1px solid rgba(255,255,255,0.12);
-    }
-    .sc-title { font-family: 'Rajdhani', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 2px; }
-    .sc-innings-score { font-family: 'Rajdhani', sans-serif; font-size: 28px; font-weight: 700; color: #FFD54F; }
-    .sc-section-title {
-      font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600;
-      letter-spacing: 3px; color: rgba(255,255,255,0.4);
-      margin: 16px 0 8px;
-    }
+    .sc-container { background: linear-gradient(135deg, rgba(5,20,50,0.98), rgba(10,28,60,0.98)); border: 1px solid rgba(255,255,255,0.15); border-radius: 24px; max-width: 720px; width: 100%; padding: 32px; box-shadow: 0 32px 80px rgba(0,0,0,0.8); max-height: 90vh; overflow-y: auto; }
+    .sc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.12); }
+    .sc-title { font-family: 'Rajdhani', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+    .sc-innings-score { font-family: 'Rajdhani', sans-serif; font-size: 32px; font-weight: 700; color: var(--accent); }
+    .sc-section-title { font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 4px; color: rgba(255,255,255,0.3); margin: 20px 0 10px; text-transform: uppercase; }
     .sc-table { width: 100%; border-collapse: collapse; }
-    .sc-table th {
-      font-size: 11px; font-weight: 600; letter-spacing: 2px;
-      color: rgba(255,255,255,0.35); padding: 4px 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
+    .sc-table th { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.3); padding: 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.08); text-transform: uppercase; }
     .sc-table th:first-child { text-align: left; }
-    .sc-table td { font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 500; padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right; color: rgba(255,255,255,0.8); }
+    .sc-table td { font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 600; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); text-align: right; color: rgba(255,255,255,0.8); }
     .sc-table td:first-child { text-align: left; color: #fff; }
-    .sc-table tr.batting-active td { color: #FFD54F; }
-    .sc-table tr.batting-active td:first-child { color: #4FC3F7; }
-    .sc-close-hint { text-align: center; margin-top: 18px; font-size: 12px; color: rgba(255,255,255,0.3); letter-spacing: 1px; }
+    .sc-table tr.batting-active td { color: var(--accent); }
+    .sc-table tr.batting-active td:first-child { color: var(--primary); }
+    .sc-close-hint { text-align: center; margin-top: 24px; font-size: 13px; color: rgba(255,255,255,0.3); letter-spacing: 2px; font-weight: 600; }
+
+    #outScreen { position: fixed; inset: 0; z-index: 950; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); }
+    #outScreen.visible { display: flex; }
+    .out-card { background: linear-gradient(135deg, #2a0505 0%, #1a0505 100%); border: 1px solid rgba(211,47,47,0.4); border-radius: 24px; padding: 50px 70px; text-align: center; min-width: 380px; box-shadow: 0 0 80px rgba(211,47,47,0.25); animation: outSlideIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275); }
+    .out-label { font-family: 'Rajdhani',sans-serif; font-size: 72px; font-weight: 900; color: #FF5252; letter-spacing: 6px; line-height: 1; font-style: italic; }
+    .out-name { font-family: 'Rajdhani',sans-serif; font-size: 26px; font-weight: 700; color: #fff; margin: 12px 0 24px; letter-spacing: 1px; }
+    .out-stats { display: flex; gap: 30px; justify-content: center; }
+    .out-stat-val { font-family: 'Rajdhani',sans-serif; font-size: 32px; font-weight: 800; color: var(--accent); }
+    .out-stat-lbl { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
+
+    #overEndScreen { position: fixed; inset: 0; z-index: 940; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); backdrop-filter: blur(6px); }
+    #overEndScreen.visible { display: flex; }
+    .over-card { background: linear-gradient(135deg, rgba(5,20,50,0.98), rgba(10,35,80,0.98)); border: 1px solid rgba(255,255,255,0.15); border-radius: 24px; padding: 40px 60px; min-width: 440px; text-align: center; box-shadow: 0 0 80px rgba(30,136,229,0.2); animation: outSlideIn 0.35s cubic-bezier(0.175,0.885,0.32,1.275); }
+    .over-headline { font-family: 'Rajdhani',sans-serif; font-size: 42px; font-weight: 800; color: #fff; margin-bottom: 24px; letter-spacing: 1px; }
+    .over-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 40px; text-align: left; }
+    .over-row-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
+    .over-row-val { font-family: 'Rajdhani',sans-serif; font-size: 18px; font-weight: 700; color: #fff; }
+
+    #wagonWheelOverlay { position: fixed; inset: 0; z-index: 930; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); }
+    #wagonWheelOverlay.visible { display: flex; flex-direction: column; gap: 15px; align-items: center; }
+    .ww-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 90%; margin-bottom: 5px; }
+    .ww-tab { padding: 6px 16px; border-radius: 20px; cursor: pointer; font-family: 'Rajdhani',sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 1px; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.06); transition: all 0.3s; }
+    .ww-tab.active { border-color: var(--primary); color: var(--primary); background: rgba(79,195,247,0.1); box-shadow: 0 0 20px rgba(79,195,247,0.1); }
   </style>
 </head>
 <body>
 
-  <!-- ─── Team Selection Screen ──────────────────────────── -->
-  <div id="teamSelectModal">
-    <h1>CRICKET SIMULATOR 3D</h1>
-    <!-- <p class="subtitle">Motion Controlled</p> -->
+  <div id="app"></div>
 
-    <div class="ts-container">
-      <div class="ts-column">
+  <!-- ─── Home Screen ────────────────────────────────────── -->
+  <div id="homeScreen">
+    <div class="home-title-group">
+      <h1 class="home-title">CRICKET SIM</h1>
+      <!-- <p class="home-subtitle">Professional Motion Experience</p> -->
+    </div>
+
+    <div class="home-btn-group">
+      <div class="home-btn" onclick="showQuickPlay()">
+        <span>QUICK PLAY</span>
+      </div>
+      <div class="home-btn" onclick="startIPLMode()">
+        <span>IPL TOURNAMENT</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Team Selection (Quick Play) ───────────────────── -->
+  <div id="teamSelectModal" class="hidden">
+    <h1 class="header-title" style="font-size: 48px; margin-bottom: 20px;">QUICK PLAY</h1>
+    <div class="ts-grid-layout">
+      <div class="ts-section">
         <h3>YOUR TEAM</h3>
-        <div class="team-grid" id="userTeamGrid">
-          <!-- Populated by JS -->
+        <div class="team-grid" id="userTeamGrid"></div>
+      </div>
+      <div class="ts-section">
+        <h3>OPPONENT</h3>
+        <div class="team-grid" id="opponentGrid"></div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 20px;">
+      <button onclick="showHome()" class="hub-nav-btn" style="padding: 20px 40px;">BACK</button>
+      <button id="startMatchBtn" class="action-btn">START MATCH</button>
+    </div>
+  </div>
+
+  <!-- ─── IPL Team Selection ────────────────────────────── -->
+  <div id="iplTeamSelectModal" class="modal-overlay">
+    <div class="header-bar">
+      <h2 class="header-title">CHOOSE YOUR IPL FRANCHISE</h2>
+      <button onclick="showHome()" class="hub-nav-btn">CANCEL</button>
+    </div>
+    <div class="team-grid" id="iplTeamGrid" style="grid-template-columns: repeat(5, 1fr); max-height: none; width: 100%; max-width: 1300px; margin: auto;">
+      <!-- Populated by JS -->
+    </div>
+    <div style="text-align: center; margin-top: 50px;">
+      <button id="confirmIPLTeamBtn" class="action-btn" disabled>CONFIRM SELECTION</button>
+    </div>
+  </div>
+
+  <!-- ─── IPL Tournament Hub ────────────────────────────── -->
+  <div id="tournamentHub" class="modal-overlay">
+    <div class="header-bar">
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <div id="hubUserTeamLogo" class="hub-team-logo"></div>
+        <h2 id="hubUserTeamName" class="header-title">LOADING...</h2>
+      </div>
+      <button onclick="showHome()" class="hub-nav-btn">EXIT TO HOME</button>
+    </div>
+
+    <div class="hub-grid">
+      <div class="hub-card hub-next-match">
+        <h3 style="color: rgba(255,255,255,0.4); letter-spacing: 2px;">NEXT MATCH</h3>
+        <div class="team-display">
+          <div id="nextMatchUserTeam" class="hub-team-name">...</div>
+          <div class="vs">VS</div>
+          <div id="nextMatchOppTeam" class="hub-team-name">...</div>
         </div>
+        <div id="nextMatchDetails" style="margin-bottom: 20px; color: rgba(255,255,255,0.6);">...</div>
+        <button onclick="playNextTournamentMatch()" class="action-btn">PLAY NEXT MATCH</button>
       </div>
 
-      <div class="ts-column">
-        <h3>OPPONENT</h3>
-        <div class="team-grid" id="opponentGrid">
-          <!-- Populated by JS -->
+      <div class="hub-card">
+        <h3 style="color: rgba(255,255,255,0.4); letter-spacing: 2px;">TOURNAMENT</h3>
+        <div class="hub-nav-btns">
+          <button onclick="showFixtures()" class="hub-nav-btn">FIXTURES</button>
+          <button onclick="showPointsTable()" class="hub-nav-btn">POINTS TABLE</button>
+          <button onclick="showStats()" class="hub-nav-btn">LEADERS</button>
+          <button onclick="showTeams()" class="hub-nav-btn">TEAMS</button>
+          <button onclick="resetTournamentAndHome()" class="hub-nav-btn" style="color: #F44336;">RESET</button>
         </div>
       </div>
     </div>
-
-    <button id="startMatchBtn">START MATCH</button>
   </div>
 
-  <!-- ─── Three.js Canvas Container ─────────────────────── -->
-  <div id="app"></div>
+  <!-- ─── Fixtures Screen ──────────────────────────────── -->
+  <div id="fixturesScreen" class="modal-overlay">
+    <div class="header-bar">
+      <h2 class="header-title">FIXTURES</h2>
+      <button onclick="showHub()" class="hub-nav-btn">BACK TO HUB</button>
+    </div>
+    <div id="fixturesList" style="max-width: 800px; margin: 0 auto; width: 100%;"></div>
+  </div>
+
+  <!-- ─── Points Table Screen ──────────────────────────── -->
+  <div id="pointsTableScreen" class="modal-overlay">
+    <div class="header-bar">
+      <h2 class="header-title">POINTS TABLE</h2>
+      <button onclick="showHub()" class="hub-nav-btn">BACK TO HUB</button>
+    </div>
+    <div style="max-width: 1000px; margin: 0 auto; width: 100%; background: var(--card-bg); border-radius: 20px; padding: 20px;">
+      <table class="data-table">
+        <thead>
+          <tr><th>TEAM</th><th>P</th><th>W</th><th>L</th><th>NR</th><th>PTS</th><th>NRR</th></tr>
+        </thead>
+        <tbody id="pointsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── Stats Screen ─────────────────────────────────── -->
+  <div id="statsScreen" class="modal-overlay">
+    <div class="header-bar">
+      <h2 class="header-title">LEADERBOARD</h2>
+      <button onclick="showHub()" class="hub-nav-btn">BACK TO HUB</button>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+      <div class="hub-card">
+        <h3>BATTING LEADERS</h3>
+        <table class="data-table">
+          <thead><tr><th>PLAYER</th><th>RUNS</th><th>AVG</th><th>SR</th></tr></thead>
+          <tbody id="topBatsmenBody"></tbody>
+        </table>
+      </div>
+      <div class="hub-card">
+        <h3>RECORDS</h3>
+        <table class="data-table">
+          <thead><tr><th>RECORD</th><th>PLAYER</th><th>VALUE</th></tr></thead>
+          <tbody id="topRecordsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Teams Section Screen ──────────────────────────── -->
+  <div id="teamsScreen" class="modal-overlay">
+    <div class="header-bar">
+      <h2 class="header-title">FRANCHISES</h2>
+      <button onclick="showHub()" class="hub-nav-btn">BACK TO HUB</button>
+    </div>
+    
+    <div id="teamsFranchiseGrid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 30px;">
+      <!-- Populated by JS -->
+    </div>
+
+    <div class="hub-card" id="teamDetailsCard" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 id="detailTeamName" class="header-title" style="font-size: 28px;">TEAM NAME</h2>
+        <div id="detailTeamStats" style="color: rgba(255,255,255,0.4); font-weight: 600;"></div>
+      </div>
+      
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>PLAYER</th>
+              <th>MAT</th>
+              <th>RUNS</th>
+              <th>BF</th>
+              <th>4s</th>
+              <th>6s</th>
+              <th>AVG</th>
+              <th>SR</th>
+              <th>LAST 5</th>
+            </tr>
+          </thead>
+          <tbody id="teamPlayersBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Match Result Screen ──────────────────────────── -->
+  <div id="matchResultScreen">
+    <h1 id="resultTitle" class="result-title victory">VICTORY!</h1>
+    <p id="resultSummary" class="result-summary">...</p>
+    <div id="resultDetails" style="margin-bottom: 40px; color: rgba(255,255,255,0.5);"></div>
+    <button onclick="showHub()" class="action-btn">CONTINUE</button>
+  </div>
 
   <!-- ─── Game HUD (shown after match starts) ────────────── -->
   <div id="gameUI">
-
-    <!-- Runner PiP at top-center -->
     <canvas id="pipMinimap" width="220" height="62"></canvas>
-
-    <!-- Top-left HUD -->
     <div id="topLeftHud">
       <div id="status">ws: disconnected</div>
       <div id="contactDiagram">
@@ -288,85 +450,45 @@
         <canvas id="impactCanvas" width="60" height="100"></canvas>
       </div>
     </div>
-
-    <!-- Big center messages -->
     <div id="shotResult"></div>
-
-    <!-- Shot mode indicator -->
     <div id="shotModeIndicator">
       <div class="mode-dot" id="modeDot"></div>
       <span class="mode-label" id="modeLabel">STROKE</span>
     </div>
-
-    <!-- Minimap top-right -->
     <canvas id="minimap" width="150" height="150"></canvas>
-
-    <!-- TV Scorebar -->
     <div id="scorebar">
-      <!-- Left: batting team + batsmen -->
       <div class="sb-panel" id="sb-left">
         <div class="sb-team-badge" id="sb-bat-badge">
           <span class="sb-team-flag" id="sb-bat-flag">🇮🇳</span>
           <span class="sb-team-short" id="sb-bat-short">IND</span>
         </div>
         <div class="sb-batsmen">
-          <div class="sb-bat-row">
-            <span class="sb-striker-dot">▶</span>
-            <span class="sb-bat-name" id="sb-striker-name">Rohit Sharma</span>
-            <span class="sb-bat-score" id="sb-striker-runs">0</span>
-            <span class="sb-bat-balls" id="sb-striker-balls">(0)</span>
-          </div>
-          <div class="sb-bat-row">
-            <span class="sb-striker-dot" style="color:transparent">▶</span>
-            <span class="sb-bat-name" id="sb-nstriker-name">Shubman Gill</span>
-            <span class="sb-bat-score" id="sb-nstriker-runs">0</span>
-            <span class="sb-bat-balls" id="sb-nstriker-balls">(0)</span>
-          </div>
+          <div class="sb-bat-row"><span class="sb-striker-dot">▶</span><span class="sb-bat-name" id="sb-striker-name">...</span><span class="sb-bat-score" id="sb-striker-runs">0</span><span class="sb-bat-balls" id="sb-striker-balls">(0)</span></div>
+          <div class="sb-bat-row"><span class="sb-striker-dot" style="color:transparent">▶</span><span class="sb-bat-name" id="sb-nstriker-name">...</span><span class="sb-bat-score" id="sb-nstriker-runs">0</span><span class="sb-bat-balls" id="sb-nstriker-balls">(0)</span></div>
         </div>
       </div>
-
       <div id="sb-divider1"></div>
-
-      <!-- Center: score block -->
       <div id="sb-center">
-        <div id="sb-vs-line">
-          <span id="sb-bat-team-name">INDIA</span>
-          <span id="sb-vs">v</span>
-          <span id="sb-bowl-team-name">AUS</span>
-        </div>
-        <div id="sb-score-line">
-          <span id="sb-score">0/0</span>
-          <span id="sb-overs-crr">0.0 ov · CRR —</span>
-          <span id="sb-last-ball-badge" style="color:#FFD54F">-</span>
-        </div>
+        <div id="sb-vs-line"><span id="sb-bat-team-name">...</span><span id="sb-vs">v</span><span id="sb-bowl-team-name">...</span></div>
+        <div id="sb-score-line"><span id="sb-score">0/0</span><span id="sb-overs-crr">0.0 ov · CRR —</span><span id="sb-last-ball-badge">-</span></div>
       </div>
-
       <div id="sb-divider2"></div>
-
-      <!-- Right: current bowler + Over history -->
       <div id="sb-right">
         <span id="sb-bowler-name">—</span>
-        <div id="sb-over-history">
-          <!-- Populated by JS: <span class="ball-icon">0</span> etc -->
-        </div>
+        <div id="sb-over-history"></div>
       </div>
-
-      <div id="sb-divider3" style="width: 1px; background: rgba(255,255,255,0.15); flex-shrink: 0;"></div>
-
-      <!-- Target Panel -->
       <div id="sb-target-panel">
         <div class="sb-target-label">TARGET</div>
-        <div id="sb-target-score">142</div>
-        <div id="sb-need-stats" style="font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 600; margin-top: 2px;">NEED 143 FROM 120</div>
+        <div id="sb-target-score">...</div>
       </div>
     </div>
   </div>
 
-  <!-- ─── Scorecard Overlay ─────────────────────────────── -->
+  <!-- ─── Overlays (Scorecard, Out, Over, Wagon) ────────── -->
   <div id="scorecardOverlay">
     <div class="sc-container">
       <div class="sc-header">
-        <span class="sc-title" id="sc-title">INDIA INNINGS</span>
+        <span class="sc-title">SCORECARD</span>
         <span class="sc-innings-score" id="sc-innings-score">0/0 (0.0)</span>
       </div>
 
@@ -392,8 +514,57 @@
         <tbody id="sc-bowling-body"></tbody>
       </table>
 
-      <p class="sc-close-hint">PRESS S · TAP SCORECARD TO CLOSE</p>
+      <p class="sc-close-hint">TAP SCORECARD TO CLOSE</p>
     </div>
+  </div>
+
+  <div id="outScreen">
+    <div class="out-card">
+      <div class="out-label">OUT!</div>
+      <div class="out-name" id="out-name">PLAYER NAME</div>
+      <div class="out-stats">
+        <div class="out-stat"><div class="out-stat-val" id="out-runs">0</div><div class="out-stat-lbl">RUNS</div></div>
+        <div class="out-stat"><div class="out-stat-val" id="out-balls">0</div><div class="out-stat-lbl">BALLS</div></div>
+        <div class="out-stat"><div class="out-stat-val" id="out-fours">0</div><div class="out-stat-lbl">4s</div></div>
+        <div class="out-stat"><div class="out-stat-val" id="out-sixes">0</div><div class="out-stat-lbl">6s</div></div>
+        <div class="out-stat"><div class="out-stat-val" id="out-sr">0.0</div><div class="out-stat-lbl">SR</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="overEndScreen">
+    <div class="over-card">
+      <div class="over-headline" id="oe-over-number">OVER 1</div>
+      <div class="over-grid">
+        <div class="over-row"><div class="over-row-label">BOWLER</div><div class="over-row-val" id="oe-bowler">—</div></div>
+        <div class="over-row"><div class="over-row-label">RUNS</div><div class="over-row-val" id="oe-over-runs">—</div></div>
+        <div class="over-row"><div class="over-row-label">STRIKER</div><div class="over-row-val" id="oe-striker">—</div></div>
+        <div class="over-row"><div class="over-row-label">NON-STRIKER</div><div class="over-row-val" id="oe-nstriker">—</div></div>
+        <div class="over-row"><div class="over-row-label">NEED</div><div class="over-row-val" id="oe-need">—</div></div>
+        <div class="over-row"><div class="over-row-label">FROM</div><div class="over-row-val" id="oe-balls-left">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="wagonWheelOverlay">
+    <div class="ww-header">WAGON WHEEL</div>
+    <div class="ww-tabs" id="wwTabs">
+      <div class="ww-tab active" data-idx="-1" onclick="switchWagonTab(this, -1)">TEAM</div>
+    </div>
+    <canvas id="wagonWheelCanvas" width="420" height="420"></canvas>
+    <div class="ww-hint">PRESS W TO CLOSE</div>
+  </div>
+
+  <!-- ─── Tournament Over Screen ────────────────────────── -->
+  <div id="tournamentOverScreen">
+    <div style="font-size: 100px; margin-bottom: 20px;">🏆</div>
+    <h1 id="championName" class="result-title victory">...</h1>
+    <p id="championSub" class="result-summary">IPL 2026 CHAMPIONS</p>
+    <div style="display: flex; gap: 40px; margin: 40px 0;">
+      <div class="hub-card" style="padding: 20px;"><h3>ORANGE CAP</h3><div id="orangeCapPlayer">...</div><div id="orangeCapRuns" style="color: var(--accent);">...</div></div>
+      <div class="hub-card" style="padding: 20px;"><h3>PURPLE CAP</h3><div id="purpleCapPlayer">...</div><div id="purpleCapWkts" style="color: var(--primary);">...</div></div>
+    </div>
+    <button onclick="resetTournamentAndHome()" class="action-btn">PLAY AGAIN</button>
   </div>
 
   <script type="module" src="/src/main.js"></script>

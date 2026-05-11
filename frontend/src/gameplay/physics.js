@@ -34,33 +34,72 @@ export function detectBatBallContact(batObject, ballObject) {
 }
 
 export function computeShotFromContact(contactInfo, batObject, incomingBallVelocity, batAngularVelocity, swingPower) {
-  const { closestPointLocal } = contactInfo;
+  const { closestPointLocal, localBallPos } = contactInfo;
   
   // Contact point on bat: local Y mapped to [-1, 1] relative to center
   const hitPositionOnBat = Math.max(-1, Math.min(1, (closestPointLocal.y - 1.5) / 1.5));
   const edgeFactor = Math.max(-1, Math.min(1, closestPointLocal.x / 0.25));
   
-  const localNormal = new THREE.Vector3(0, 0, -1);
-  const worldFaceNormal = localNormal.applyQuaternion(batObject.quaternion).normalize();
+  // --- IMPROVED NORMAL CALCULATION ---
+  // The literal face normal
+  const localFaceNormal = new THREE.Vector3(0, 0, -1);
+  // The actual contact normal based on the box geometry
+  const localContactNormal = new THREE.Vector3().subVectors(localBallPos, closestPointLocal).normalize();
   
+  // Blend the normals to "round off" the bat edges. 
+  // This prevents the ball from hitting a perfectly flat side and reflecting 180 degrees back.
+  // We favor the face normal to ensure the ball follows the intended angle of the blade.
+  const normalSmoothing = 0.35; // How much the edge affects the reflection direction
+  const smoothedLocalNormal = localFaceNormal.clone().lerp(localContactNormal, normalSmoothing).normalize();
+  const worldNormal = smoothedLocalNormal.applyQuaternion(batObject.quaternion).normalize();
+  
+  // Face normal for horizontal guidance (glances/flicks)
+  const worldFaceNormal = localFaceNormal.clone().applyQuaternion(batObject.quaternion).normalize();
+
+  // FIX 4: Normalize Angular Velocity by Axis
+  const scaledAngularVelocity = new THREE.Vector3(
+    batAngularVelocity.x * 0.5, 
+    batAngularVelocity.y * 1.4, 
+    batAngularVelocity.z * 1.0
+  );
+
   const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(batObject.quaternion).normalize();
-  const batContactVelocity = batAngularVelocity.clone().cross(upVector).multiplyScalar(closestPointLocal.y);
+  let swingContribution = scaledAngularVelocity.clone().cross(upVector).multiplyScalar(closestPointLocal.y);
   
+  const tangentialDir = new THREE.Vector3(0, 1, 0).cross(worldFaceNormal).normalize();
+  swingContribution.addScaledVector(tangentialDir, scaledAngularVelocity.y * 1.2);
+  
+  // FIX 1: Remap Swing Vector's Coordinate Frame
+  const faceAngle = Math.atan2(worldFaceNormal.x, -worldFaceNormal.z); 
+  const lateralBias = new THREE.Matrix4().makeRotationY(faceAngle * 1.15); 
+  swingContribution.applyMatrix4(lateralBias);
+
   let d = incomingBallVelocity.clone();
   if (d.lengthSq() < 0.001) d.set(0, 0, 1);
   d.normalize();
   
-  const n = worldFaceNormal;
+  const n = worldNormal; // Use the smoothed normal for reflection
   const dot = d.dot(n);
   const r = d.clone().sub(n.clone().multiplyScalar(2 * dot)).normalize();
   
-  const swingContribution = batContactVelocity.clone().multiplyScalar(0.25);
-  let finalDirection = r.clone().add(swingContribution);
+  // FIX 2: Weights Adjustment
+  swingContribution.multiplyScalar(0.85);
+  let finalDirection = swingContribution.clone().add(r.clone().multiplyScalar(0.15));
   
-  // High influence from face normal to support "closing the face"
+  // FIX 3: Introduce Face Angle Contribution
+  const batFaceNormalHorizontal = new THREE.Vector3(worldFaceNormal.x, 0, worldFaceNormal.z).normalize();
+  finalDirection.addScaledVector(batFaceNormalHorizontal, 1.4); 
+
+  // Edge Deflection: Instead of world X, apply deflection relative to the bat's local X-axis
+  // This ensures that hitting the "leading edge" pushes the ball away from the bat correctly.
+  // We dampen the Z-component to prevent the ball from reflecting 180 degrees back to the bowler when the bat is angled.
+  const localXAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(batObject.quaternion);
+  const edgeDeflectionDir = new THREE.Vector3(localXAxis.x, localXAxis.y * 0.5, localXAxis.z * 0.2).normalize();
+  finalDirection.addScaledVector(edgeDeflectionDir, edgeFactor * 2.8);
+
   const verticalLift = worldFaceNormal.y;
-  finalDirection.y += verticalLift * 1.5;
-  finalDirection.y += hitPositionOnBat * 0.3;
+  finalDirection.y += verticalLift * 2.5;
+  finalDirection.y += hitPositionOnBat * 0.4;
 
   const absEdge = Math.abs(edgeFactor);
   let powerMultiplier = 1.0;
@@ -69,8 +108,9 @@ export function computeShotFromContact(contactInfo, batObject, incomingBallVeloc
   if (absEdge > edgeThreshold) {
     const penalty = (absEdge - edgeThreshold) * (1.0 - config.physics.edgeForgiveness);
     powerMultiplier = Math.max(0.3, 1.0 - penalty); 
-    finalDirection.x += edgeFactor * (0.2 + Math.random() * 0.3);
-    finalDirection.z += (Math.random() - 0.5) * 0.2;
+    // Additional edge deflection (relative and dampened)
+    finalDirection.addScaledVector(edgeDeflectionDir, edgeFactor * 1.8);
+    finalDirection.z += (Math.random() - 0.5) * 0.4;
   }
   
   finalDirection.normalize();
@@ -88,6 +128,7 @@ export function computeShotFromContact(contactInfo, batObject, incomingBallVeloc
     edgeFactor: edgeFactor
   };
 }
+
 
 export function applyBallVelocity(ballObject, velocity, dt) {
   let bounced = false;

@@ -6,6 +6,22 @@ export const config = {
   GYRO_DEADZONE: 0.1,
   MAX_EXPECTED_ACC: 50.0,
 
+  // Hand-Tracked Bat Pivot
+  batTranslation: {
+    sensitivity: 0.02,              // How strongly linear acceleration moves the bat (direct, no lag)
+    decayFactor: 0.92,              // Displacement decay per sensor packet (lower = snappier return)
+    maxDisplacement: { x: 1.8, y: 1.4, z: 1.2 }, // Max travel from rest position (world units)
+  },
+
+  // Tournament Settings
+  tournamentSettings: {
+    matchesPerTeam: 7,
+    oversPerMatch: 5,
+    powerplayOvers: 2,
+    minTargetRPO: 8.5,
+    maxTargetRPO: 13.2
+  },
+
   // Delivery Settings
   deliverySettings: {
     pitchZMin: -9,
