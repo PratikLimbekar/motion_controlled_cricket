@@ -294,3 +294,584 @@ code {
     border-right-color: var(--border);
   }
 }
+
+/* ================================
+   🏆 CAREER HUB STYLES
+================================ */
+
+.hub-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(13, 20, 35, 0.97) 0%, rgba(5, 7, 12, 0.99) 100%);
+  z-index: 2000;
+}
+
+/* AI Flash Card */
+.ai-flash-card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  width: 400px;
+  background: linear-gradient(135deg, rgba(15, 20, 35, 0.98), rgba(8, 10, 18, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 24px;
+  padding: 30px;
+  text-align: center;
+  z-index: 3000;
+  display: none;
+  flex-direction: column;
+  gap: 15px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  animation: flashPulse 2s infinite ease-in-out;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.ai-flash-card.visible {
+  display: flex;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.flash-header {
+  font-size: 14px;
+  letter-spacing: 4px;
+  color: #4FC3F7;
+  font-weight: 800;
+}
+
+.flash-content {
+  font-size: 28px;
+  font-weight: 900;
+  color: white;
+  line-height: 1.2;
+}
+
+.flash-footer {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 10px;
+}
+
+/* World Cup Celebration */
+.wc-celebration {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle, rgba(255,215,0,0.3) 0%, rgba(0,0,0,0.95) 70%);
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: celebFadeIn 1s ease-out;
+}
+
+.celeb-content {
+  text-align: center;
+  color: white;
+}
+
+.celeb-title {
+  font-size: 80px;
+  font-weight: 900;
+  background: linear-gradient(to bottom, #FFD700, #B8860B);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 10px 30px rgba(255, 215, 0, 0.4);
+  margin-bottom: 20px;
+}
+
+.celeb-sub {
+  font-size: 24px;
+  color: #fff;
+  opacity: 0.8;
+  margin-bottom: 40px;
+}
+
+.celeb-stats {
+  display: flex;
+  gap: 30px;
+  justify-content: center;
+  margin-bottom: 50px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+@keyframes celebFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.hub-overlay.visible {
+  display: flex;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.career-nav {
+  padding: 20px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.03);
+}
+
+.career-logo {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, #4FC3F7, #AA3BFF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.career-player-info {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+}
+
+#career-player-name {
+  font-weight: 600;
+  font-size: 1.2rem;
+  color: #E0E0E0;
+}
+
+.reputation-container {
+  width: 250px;
+}
+
+.reputation-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 4px;
+}
+
+.reputation-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#reputation-fill {
+  height: 100%;
+  background: #AA3BFF;
+  box-shadow: 0 0 10px #AA3BFF;
+  transition: width 0.5s ease;
+}
+
+.career-content {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px 1fr 300px;
+  gap: 20px;
+  padding: 30px;
+  overflow: hidden;
+}
+
+/* Social Feed */
+.career-social {
+  background: rgba(255,255,255,0.05);
+  border-radius: 15px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-container {
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 15px;
+}
+
+.social-post {
+  background: rgba(255,255,255,0.03);
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  border-left: 3px solid #4FC3F7;
+}
+
+.post-header {
+  font-size: 12px;
+  color: #4FC3F7;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+/* Main Panel */
+.career-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.format-banner {
+  padding: 20px;
+  border-radius: 15px;
+  text-align: center;
+  background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.format-banner.test { background: linear-gradient(135deg, #2c3e50, #000000); }
+.format-banner.odi { background: linear-gradient(135deg, #00c6ff, #0072ff); }
+.format-banner.t20 { background: linear-gradient(135deg, #8e2de2, #4a00e0); }
+
+.scenario-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.scenario-card {
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: all 0.3s;
+  cursor: pointer;
+}
+
+.scenario-card:hover {
+  background: rgba(255,255,255,0.12);
+  transform: translateY(-5px);
+  border-color: #AA3BFF;
+}
+
+.scenario-card.locked {
+  opacity: 0.5;
+  filter: grayscale(1);
+  cursor: not-allowed;
+}
+
+/* Stats Sidebar */
+.career-stats-sidebar {
+  background: rgba(255,255,255,0.05);
+  border-radius: 15px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.stats-tabs {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 20px;
+}
+
+.stats-tabs button {
+  flex: 1;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #fff;
+  padding: 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.stats-tabs button.active {
+  background: #AA3BFF;
+  border-color: #AA3BFF;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.cricbuzz-ticker {
+  margin-top: auto;
+  background: #000;
+  padding: 15px;
+  border-radius: 10px;
+  border: 1px solid #AA3BFF;
+}
+
+.ticker-header {
+  font-size: 10px;
+  color: #AA3BFF;
+  font-weight: 800;
+  margin-bottom: 5px;
+}
+
+.play-action-btn {
+  background: linear-gradient(90deg, #AA3BFF, #6200EA);
+  border: none;
+  color: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+  transition: transform 0.2s;
+}
+
+.play-action-btn:hover {
+  transform: scale(1.02);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(1.05); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Career Hub Layout */
+.career-hub-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at top left, #0d121d, #05070a);
+  z-index: 3000;
+  display: none;
+  flex-direction: column;
+  padding: 0;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.career-hub-overlay::-webkit-scrollbar {
+  width: 8px;
+}
+.career-hub-overlay::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.career-hub-overlay.visible {
+  display: flex;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.career-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #0d121d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 20px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.career-main-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 40px;
+  padding: 40px;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.career-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.career-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.career-card h3 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  letter-spacing: 3px;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 20px;
+  text-transform: uppercase;
+}
+
+.format-banner {
+  padding: 15px 40px;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-align: center;
+}
+.format-banner.test { background: #FF5252; color: #fff; }
+.format-banner.ipl { background: #FFD700; color: #000; }
+.format-banner.international { background: #4FC3F7; color: #000; }
+
+.stats-tabs {
+  display: flex;
+  gap: 5px;
+  background: rgba(0,0,0,0.3);
+  padding: 4px;
+  border-radius: 10px;
+}
+
+.stats-tabs button {
+  flex: 1;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  padding: 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stats-tabs button.active {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.stat-item label {
+  display: block;
+  font-size: 11px;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.stat-item span {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.stat-item.highlight span {
+  color: #4FC3F7;
+}
+
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding-bottom: 40px;
+}
+
+.scenario-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  padding: 28px;
+  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.scenario-card:hover {
+  background: rgba(79, 195, 247, 0.05);
+  transform: translateY(-8px);
+  border-color: var(--primary);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+}
+
+.sc-format { 
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 800; 
+  font-size: 12px; 
+  letter-spacing: 2px;
+  margin-bottom: 10px; 
+  color: var(--primary);
+}
+.sc-name { 
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px; 
+  font-weight: 700; 
+  margin-bottom: 12px; 
+}
+.sc-difficulty { 
+  font-size: 10px; 
+  background: rgba(255,255,255,0.06); 
+  display: inline-block; 
+  padding: 4px 10px; 
+  border-radius: 6px; 
+  margin-bottom: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.sc-desc { 
+  font-size: 14px; 
+  color: rgba(255,255,255,0.5); 
+  line-height: 1.6; 
+  margin-bottom: 20px; 
+  flex: 1;
+}
+.sc-status { 
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700; 
+  font-size: 13px; 
+  letter-spacing: 1px;
+}
+
+.sentiment-meter {
+  height: 10px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 5px;
+  overflow: hidden;
+  margin-top: 15px;
+}
+
+.sentiment-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FF5252, #4CAF50);
+  width: 50%;
+  transition: width 1s ease;
+}
+
+.social-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.social-post {
+  background: rgba(0,0,0,0.2);
+  padding: 12px;
+  border-radius: 12px;
+  border-left: 3px solid #4FC3F7;
+}
+
+.career-player-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reputation-mini-bar {
+  width: 150px;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.rep-fill {
+  height: 100%;
+  background: #AA3BFF;
+  box-shadow: 0 0 10px #AA3BFF;
+  width: 0%;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}

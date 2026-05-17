@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cricket Motion Simulator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
   <style>
     :root {
       --primary: #4FC3F7;
@@ -168,12 +169,12 @@
     #contactDiagram canvas { width: 60px; height: 100px; }
     #shotResult {
       position: fixed; top: 35%; left: 50%; transform: translate(-50%, -50%);
-      font-family: 'Rajdhani', sans-serif; font-size: 110px; font-weight: 900;
-      color: #fff; text-shadow: 0 10px 40px rgba(0,0,0,0.9);
+      font-family: 'Rajdhani', sans-serif; font-size: 80px; font-weight: 800;
+      color: #fff; text-shadow: 0 5px 20px rgba(0,0,0,0.8);
       pointer-events: none; opacity: 0; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      letter-spacing: 6px; z-index: 100; font-style: italic;
+      letter-spacing: 2px; z-index: 5000; text-align: center; width: 100%;
     }
-    #shotModeIndicator { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 10px; background: rgba(0,0,0,0.8); border-radius: 30px; padding: 8px 20px; border: 1px solid var(--primary); }
+    #shotModeIndicator { position: absolute; top: 90px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.8); border-radius: 30px; padding: 8px 20px; border: 1px solid var(--primary); opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
     #shotModeIndicator .mode-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: pulse 0.8s infinite; }
     #shotModeIndicator .mode-label { font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 2px; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
@@ -216,7 +217,7 @@
     #sb-target-score { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: 1px; }
 
     /* ─── Overlays & Tables ───────────────────────────────── */
-    #scorecardOverlay { position: fixed; inset: 0; z-index: 900; background: rgba(0,8,20,0.94); display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; pointer-events: auto; backdrop-filter: blur(12px); }
+    #scorecardOverlay { position: fixed; inset: 0; z-index: 2500; background: radial-gradient(circle at center, rgba(0, 12, 30, 0.97) 0%, rgba(0, 5, 15, 0.99) 100%); display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; pointer-events: auto; }
     #scorecardOverlay.visible { display: flex; }
     .sc-container { background: linear-gradient(135deg, rgba(5,20,50,0.98), rgba(10,28,60,0.98)); border: 1px solid rgba(255,255,255,0.15); border-radius: 24px; max-width: 720px; width: 100%; padding: 32px; box-shadow: 0 32px 80px rgba(0,0,0,0.8); max-height: 90vh; overflow-y: auto; }
     .sc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.12); }
@@ -232,7 +233,7 @@
     .sc-table tr.batting-active td:first-child { color: var(--primary); }
     .sc-close-hint { text-align: center; margin-top: 24px; font-size: 13px; color: rgba(255,255,255,0.3); letter-spacing: 2px; font-weight: 600; }
 
-    #outScreen { position: fixed; inset: 0; z-index: 950; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); }
+    #outScreen { position: fixed; inset: 0; z-index: 2600; display: none; align-items: center; justify-content: center; background: radial-gradient(circle at center, rgba(25, 5, 5, 0.94) 0%, rgba(8, 2, 2, 0.98) 100%); }
     #outScreen.visible { display: flex; }
     .out-card { background: linear-gradient(135deg, #2a0505 0%, #1a0505 100%); border: 1px solid rgba(211,47,47,0.4); border-radius: 24px; padding: 50px 70px; text-align: center; min-width: 380px; box-shadow: 0 0 80px rgba(211,47,47,0.25); animation: outSlideIn 0.4s cubic-bezier(0.175,0.885,0.32,1.275); }
     .out-label { font-family: 'Rajdhani',sans-serif; font-size: 72px; font-weight: 900; color: #FF5252; letter-spacing: 6px; line-height: 1; font-style: italic; }
@@ -241,7 +242,7 @@
     .out-stat-val { font-family: 'Rajdhani',sans-serif; font-size: 32px; font-weight: 800; color: var(--accent); }
     .out-stat-lbl { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
 
-    #overEndScreen { position: fixed; inset: 0; z-index: 940; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); backdrop-filter: blur(6px); }
+    #overEndScreen { position: fixed; inset: 0; z-index: 2700; display: none; align-items: center; justify-content: center; background: radial-gradient(circle at center, rgba(5, 15, 35, 0.94) 0%, rgba(2, 5, 15, 0.98) 100%); }
     #overEndScreen.visible { display: flex; }
     .over-card { background: linear-gradient(135deg, rgba(5,20,50,0.98), rgba(10,35,80,0.98)); border: 1px solid rgba(255,255,255,0.15); border-radius: 24px; padding: 40px 60px; min-width: 440px; text-align: center; box-shadow: 0 0 80px rgba(30,136,229,0.2); animation: outSlideIn 0.35s cubic-bezier(0.175,0.885,0.32,1.275); }
     .over-headline { font-family: 'Rajdhani',sans-serif; font-size: 42px; font-weight: 800; color: #fff; margin-bottom: 24px; letter-spacing: 1px; }
@@ -249,11 +250,42 @@
     .over-row-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
     .over-row-val { font-family: 'Rajdhani',sans-serif; font-size: 18px; font-weight: 700; color: #fff; }
 
-    #wagonWheelOverlay { position: fixed; inset: 0; z-index: 930; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); }
+    #wagonWheelOverlay { position: fixed; inset: 0; z-index: 2800; display: none; align-items: center; justify-content: center; background: radial-gradient(circle at center, rgba(5, 20, 10, 0.95) 0%, rgba(1, 5, 2, 0.99) 100%); }
     #wagonWheelOverlay.visible { display: flex; flex-direction: column; gap: 15px; align-items: center; }
     .ww-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 90%; margin-bottom: 5px; }
     .ww-tab { padding: 6px 16px; border-radius: 20px; cursor: pointer; font-family: 'Rajdhani',sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 1px; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.06); transition: all 0.3s; }
     .ww-tab.active { border-color: var(--primary); color: var(--primary); background: rgba(79,195,247,0.1); box-shadow: 0 0 20px rgba(79,195,247,0.1); }
+
+    /* ─── Camera Tracking UI ────────────────────────────── */
+    .camera-btn {
+      background: rgba(0,0,0,0.7);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 6px 12px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      pointer-events: auto;
+    }
+    .camera-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--primary); }
+    .camera-btn.active { border-color: #4CAF50; color: #4CAF50; }
+    .camera-btn .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #FF5252; }
+    .camera-btn.active .status-dot { background: #4CAF50; box-shadow: 0 0 10px #4CAF50; }
+
+    .calibration-overlay {
+      position: fixed; inset: 0; z-index: 4000;
+      background: rgba(0,0,0,0.82);
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .calibration-overlay.visible { display: flex; }
+    .calibration-countdown { font-size: 120px; font-weight: 900; color: var(--primary); font-family: 'Rajdhani', sans-serif; }
+    .calibration-hint { font-size: 24px; color: #fff; margin-top: 20px; text-transform: uppercase; letter-spacing: 4px; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -268,11 +300,14 @@
     </div>
 
     <div class="home-btn-group">
-      <div class="home-btn" onclick="showQuickPlay()">
-        <span>QUICK PLAY</span>
+      <div class="home-btn">
+        <span>CAREER MODE</span>
       </div>
-      <div class="home-btn" onclick="startIPLMode()">
+      <div class="home-btn">
         <span>IPL TOURNAMENT</span>
+      </div>
+      <div class="home-btn">
+        <span>QUICK PLAY</span>
       </div>
     </div>
   </div>
@@ -310,7 +345,16 @@
     </div>
   </div>
 
-  <!-- ─── IPL Tournament Hub ────────────────────────────── -->
+  <!-- ─── AI Simulation Flash Card ─── -->
+  <div id="ai-flash-card" class="ai-flash-card">
+    <div class="flash-header">AI SIMULATION</div>
+    <div id="flash-content" class="flash-content">Non-striker taking charge...</div>
+    <div class="flash-footer">USER RETURNING TO STRIKE</div>
+  </div>
+
+
+
+  <!-- ─── IPL Tournament Hub ─── -->
   <div id="tournamentHub" class="modal-overlay">
     <div class="header-bar">
       <div style="display: flex; align-items: center; gap: 20px;">
@@ -340,6 +384,84 @@
           <button onclick="showStats()" class="hub-nav-btn">LEADERS</button>
           <button onclick="showTeams()" class="hub-nav-btn">TEAMS</button>
           <button onclick="resetTournamentAndHome()" class="hub-nav-btn" style="color: #F44336;">RESET</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Career Mode Hub ─── -->
+  <div id="careerHub" class="career-hub-overlay">
+    <div class="header-bar">
+      <div style="display: flex; align-items: center; gap: 30px;">
+        <h2 class="header-title" style="letter-spacing: 2px;">PLAYER CAREER</h2>
+        <div class="career-player-profile">
+          <div id="career-player-name" style="font-weight: 800; font-size: 18px; color: #4FC3F7;">...</div>
+          <div class="reputation-mini-bar">
+            <div id="reputation-fill" class="rep-fill"></div>
+          </div>
+          <div id="reputation-value" style="font-size: 10px; color: rgba(255,255,255,0.4);">0 / 1000</div>
+        </div>
+      </div>
+      <button onclick="showHome()" class="hub-nav-btn">BACK TO HOME</button>
+    </div>
+
+    <div id="career-format-banner" class="format-banner test">
+      <span id="current-format-label">DOMESTIC QUALIFIERS</span>
+    </div>
+
+    <div class="career-main-layout">
+      <!-- Left: Analytics & Social -->
+      <div class="career-sidebar">
+        <div class="career-card stats-card">
+          <div class="stats-header">
+            <h3>PERFORMANCE</h3>
+            <div class="stats-tabs">
+              <button onclick="updateCareerStatsView('all')" class="active">ALL</button>
+              <button onclick="updateCareerStatsView('test')">TEST</button>
+              <button onclick="updateCareerStatsView('odi')">ODI</button>
+              <button onclick="updateCareerStatsView('t20')">T20</button>
+            </div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-item"><label>MATCHES</label><span id="stat-matches">0</span></div>
+            <div class="stat-item"><label>RUNS</label><span id="stat-runs">0</span></div>
+            <div class="stat-item"><label>AVG</label><span id="stat-avg">0.0</span></div>
+            <div class="stat-item"><label>SR</label><span id="stat-sr">0.0</span></div>
+            <div class="stat-item"><label>4s</label><span id="stat-fours">0</span></div>
+            <div class="stat-item"><label>6s</label><span id="stat-sixes">0</span></div>
+            <div class="stat-item highlight"><label>HS</label><span id="stat-hs">0</span></div>
+          </div>
+        </div>
+
+        <div id="career-ipl-milestone" class="career-card milestone-card">
+          <h3>IPL SELECTION PROGRESS</h3>
+          <div class="progress-container">
+            <div id="ipl-run-fill" class="progress-fill"></div>
+          </div>
+          <p id="ipl-run-text">0 / 1200 RUNS</p>
+        </div>
+
+        <div class="career-card social-card">
+          <h3>CRIC-BUZZ FEED</h3>
+          <div id="career-social-feed" class="social-feed">
+            <!-- Feed items added via JS -->
+          </div>
+        </div>
+
+        <div class="career-card sentiment-card">
+          <h3>FAN SENTIMENT</h3>
+          <div class="sentiment-meter">
+            <div id="sentiment-bar" class="sentiment-fill"></div>
+          </div>
+          <p id="sentiment-label">SKEPTICAL</p>
+        </div>
+      </div>
+
+      <!-- Right: Scenario Selection -->
+      <div class="career-scenarios">
+        <h3>AVAILABLE CHALLENGES</h3>
+        <div id="career-scenario-grid" class="scenario-grid">
+          <!-- Populated by JS -->
         </div>
       </div>
     </div>
@@ -445,6 +567,10 @@
     <canvas id="pipMinimap" width="220" height="62"></canvas>
     <div id="topLeftHud">
       <div id="status">ws: disconnected</div>
+      <button id="cameraToggleBtn" class="camera-btn" onclick="toggleCameraTracking()">
+        <div class="status-dot"></div>
+        <span>CAMERA TRACKING: OFF</span>
+      </button>
       <div id="contactDiagram">
         <label>Impact</label>
         <canvas id="impactCanvas" width="60" height="100"></canvas>
@@ -553,6 +679,11 @@
     </div>
     <canvas id="wagonWheelCanvas" width="420" height="420"></canvas>
     <div class="ww-hint">PRESS W TO CLOSE</div>
+  </div>
+
+  <div id="calibrationOverlay" class="calibration-overlay">
+    <div id="calibrationCountdown" class="calibration-countdown">3</div>
+    <div class="calibration-hint">TAKE YOUR STANCE</div>
   </div>
 
   <!-- ─── Tournament Over Screen ────────────────────────── -->

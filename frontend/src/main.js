@@ -3,24 +3,20 @@ import { connectSocket } from './network/socket.js';
 import { addMotionData, getRecentMotion } from './input/motionBuffer.js';
 import { detectBatBallContact, computeShotFromContact, applyBallVelocity } from './gameplay/physics.js';
 import { 
-  initFielders, 
-  onBallLanded, 
-  updateFieldersEndOfOver, 
-  updateFielderChasing, 
-  resetFielderStates, 
-  lerpFieldersToBase,
-  startBowlerRunUp,
-  updateBowlerRunUp,
-  getBowlerReleaseX,
-  getWicketkeeperPosition,
-  getBowlerObject,
-  getWicketkeeperObject
+  initFielders, startBowlerRunUp, updateBowlerRunUp, getBowlerReleaseX, 
+  getWicketkeeperPosition, updateFielderChasing, resetFielderStates, 
+  lerpFieldersToBase, updateFieldersEndOfOver, getBowlerObject, 
+  getWicketkeeperObject, setFormat, onBallLanded
 } from './gameplay/FielderSystem.js';
 import { config } from './config.js';
 import { ROSTER, getTeam, getBowlers } from './data/Roster.js';
 import { IPL_ROSTER, getIPLTeam } from './data/IPLRoster.js';
+import { DOMESTIC_ROSTER, getDomesticTeam, getDomesticBowlers } from './data/DomesticRoster.js';
 import { tournament } from './data/TournamentState.js';
+import { career } from './data/CareerState.js';
+import { SCENARIOS } from './data/Scenarios.js';
 import * as THREE from 'three';
+import { OptionalCameraController } from './ai/OptionalCameraController.js';
 
 /* ================================
    🧠 GAME STATE & MATCH DATA
@@ -31,6 +27,9 @@ let opponentTeam = null;
 let currentBowlerIndex = 0; // Index within the 5 specialists
 let bowlerStats = []; // { name, overs, runs, wickets }
 let isTournamentMode = false;
+let isCareerMode = false;
+let currentScenario = null;
+let userBattingIndex = 0; // The index of the user in batsmenStats
 
 let isMatchStarted = false;
 let isBallActive = false;
@@ -94,23 +93,67 @@ let batsmenStats = []; // { name, runs, balls, fours, sixes, status }
    🚀 INITIALIZATION & UI
 ================================ */
 
-const { scene, camera, renderer, bat, ball, bounceMarker, fielders, bowler: bowlerModel, wicketkeeper: wkModel } = setupScene(document.getElementById('app'));
+const sceneUtils = setupScene(document.getElementById('app'));
+const { scene, camera, renderer, bat, ball, bounceMarker, guardMarker, fielders, bowler: bowlerModel, wicketkeeper: wkModel } = sceneUtils;
 let batObject = bat;
 let ballObject = ball;
 let bounceMarkerObject = bounceMarker;
+let guardMarkerObject = guardMarker;
 let contactFlash = new THREE.PointLight(0xffff00, 0, 10);
 scene.add(contactFlash);
 
-const restPosition = new THREE.Vector3(config.environment.restPosition.x, config.environment.restPosition.y, config.environment.restPosition.z);
+// 🎯 Performance: cap pixel ratio to 1 — biggest single GPU win
+renderer.setPixelRatio(1);
+// Re-apply size so the cap takes effect
+renderer.setSize(window.innerWidth, window.innerHeight);
+
 let gravityVec = new THREE.Vector3(0, 0, 0);
 let currentOrientation = new THREE.Quaternion().identity();
 let calibrationQuaternion = new THREE.Quaternion().identity();
 let rawOrientation = new THREE.Quaternion().identity();
 let currentWorldAngularVelocity = new THREE.Vector3();
 let currentSwingPower = 0;
+let restPosition = new THREE.Vector3(config.environment.restPosition.x, config.environment.restPosition.y, config.environment.restPosition.z);
 
 // Hand-tracked pivot state (direct displacement — no velocity lag)
 let batHandDisplacement = new THREE.Vector3();
+
+/* ================================
+   📷 CAMERA TRACKING
+================================ */
+// Create with the live scene so AvatarRenderer can add 3D nodes to it
+const cameraController = new OptionalCameraController(scene);
+window.toggleCameraTracking = async () => {
+  const btn = document.getElementById('cameraToggleBtn');
+  const span = btn.querySelector('span');
+  
+  if (cameraController && cameraController.isActive()) {
+    cameraController.disable();
+    btn.classList.remove('active');
+    span.innerText = "CAMERA TRACKING: OFF";
+  } else {
+    span.innerText = "INITIALIZING...";
+    await cameraController.enable();
+    if (cameraController && cameraController.isActive()) {
+      btn.classList.add('active');
+      span.innerText = "CAMERA TRACKING: ON";
+      
+      // Start calibration automatically
+      document.getElementById('calibrationOverlay').classList.add('visible');
+      const timer = setInterval(() => {
+        document.getElementById('calibrationCountdown').innerText = cameraController.calibrationManager.getCountdown();
+        if (!cameraController.calibrationManager.isActive()) {
+          clearInterval(timer);
+          document.getElementById('calibrationOverlay').classList.remove('visible');
+        }
+      }, 100);
+      cameraController.calibrate(restPosition);
+    } else {
+      span.innerText = "CAMERA FAILED";
+      alert("Failed to access camera. Please ensure you are using a secure context (HTTPS or localhost).");
+    }
+  }
+};
 
 /* ================================
    🎮 NAVIGATION & UI HELPERS
@@ -118,21 +161,72 @@ let batHandDisplacement = new THREE.Vector3();
 
 window.showHome = () => {
   document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('visible'));
+  const cHub = document.getElementById('careerHub');
+  if (cHub) cHub.classList.remove('visible');
+  
   document.getElementById('teamSelectModal').classList.add('hidden');
+  const careerHub = document.getElementById('careerHub');
+  if (careerHub) careerHub.classList.remove('visible');
+  
   document.getElementById('homeScreen').style.display = 'flex';
   document.getElementById('gameUI').style.display = 'none';
   document.getElementById('matchResultScreen').style.display = 'none';
   isMatchStarted = false;
+  isCareerMode = false;
+  isTournamentMode = false;
 };
+
+
+function updateSocialFeed() {
+  const feed = document.getElementById('career-social-feed');
+  if (!feed) return;
+  feed.innerHTML = '';
+
+  const posts = [
+    { user: 'CricBuzz', text: `Breaking: ${career.data.playerName} is the talk of the domestic circuit!`, time: '2h ago' },
+    { user: 'CricketFan99', text: `That last century from ${career.data.playerName.split(' ')[0]} was pure class. 🔥`, time: '4h ago' },
+    { user: 'SportsToday', text: `Is ${career.data.playerName} ready for the IPL? Experts weigh in.`, time: '6h ago' }
+  ];
+
+  posts.forEach(p => {
+    const item = document.createElement('div');
+    item.className = 'social-post';
+    item.innerHTML = `
+      <div class="post-user">@${p.user}</div>
+      <div class="post-text">${p.text}</div>
+      <div class="post-time">${p.time}</div>
+    `;
+    feed.appendChild(item);
+  });
+}
+
+function updateSentiment() {
+  const bar = document.getElementById('sentiment-bar');
+  const label = document.getElementById('sentiment-label');
+  if (!bar || !label) return;
+
+  const rep = career.data.reputation;
+  const pct = Math.min(100, (rep / 5000) * 100);
+  bar.style.width = `${pct}%`;
+
+  if (pct < 30) label.innerText = "SKEPTICAL";
+  else if (pct < 60) label.innerText = "RISING STAR";
+  else if (pct < 90) label.innerText = "FAN FAVORITE";
+  else label.innerText = "NATIONAL HERO";
+}
 
 window.showQuickPlay = () => {
   document.getElementById('homeScreen').style.display = 'none';
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('visible'));
   document.getElementById('teamSelectModal').classList.remove('hidden');
+  isCareerMode = false;
   isTournamentMode = false;
+  currentScenario = null;
 };
 
 window.startIPLMode = () => {
   document.getElementById('homeScreen').style.display = 'none';
+  isCareerMode = false;
   isTournamentMode = true;
   if (!tournament.data) {
     showIPLTeamSelection();
@@ -325,6 +419,198 @@ window.resetTournament = () => {
   }
 };
 
+/* ================================
+   🏆 CAREER MODE LOGIC
+================================ */
+
+window.startCareerMode = () => {
+  console.log("startCareerMode clicked");
+  if (!career.data) {
+    console.log("No career data, prompting for name...");
+    const name = prompt("Enter your Player Name:", "C. Player");
+    if (!name) return;
+    career.init(name);
+  }
+  window.showCareerHub();
+};
+
+window.showCareerHub = () => {
+  console.log("showCareerHub called", career.data);
+  if (!career.data) return;
+  
+  // Suppress all other UI
+  document.getElementById('homeScreen').style.display = 'none';
+  document.getElementById('gameUI').style.display = 'none';
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('visible'));
+  
+  const hub = document.getElementById('careerHub');
+  if (hub) {
+    hub.classList.add('visible');
+    hub.style.display = 'flex'; // Force display
+    console.log("careerHub visibility forced");
+  } else {
+    console.error("careerHub element NOT FOUND");
+  }
+  
+  document.getElementById('career-player-name').innerText = career.data.playerName.toUpperCase();
+  
+  // Update Reputation
+  const rep = career.data.reputation;
+  const maxRep = 1000;
+  const repPercent = Math.min(100, (rep / maxRep) * 100);
+  document.getElementById('reputation-fill').style.width = `${repPercent}%`;
+  document.getElementById('reputation-value').innerText = `${rep} / ${maxRep}`;
+  
+  // Update Stage UI
+  const formatLabel = document.getElementById('current-format-label');
+  const banner = document.getElementById('career-format-banner');
+  banner.className = 'format-banner ' + (career.data.currentStage === 'domestic' ? 'test' : career.data.currentStage);
+  
+  if (career.data.currentStage === 'domestic') {
+    formatLabel.innerText = "DOMESTIC QUALIFIERS (STAGE 1)";
+    document.getElementById('career-ipl-milestone').style.display = 'none';
+  } else {
+    formatLabel.innerText = career.data.currentStage.toUpperCase() + " SEASON";
+    document.getElementById('career-ipl-milestone').style.display = 'block';
+    
+    // Update IPL Milestone
+    const runs = career.data.iplTotalRuns;
+    const runPercent = Math.min(100, (runs / 1200) * 100);
+    document.getElementById('ipl-run-fill').style.width = `${runPercent}%`;
+    document.getElementById('ipl-run-text').innerText = `${runs} / 1200 RUNS`;
+  }
+
+  window.updateCareerStatsView('all');
+  window.renderScenarioGrid();
+  updateSocialFeed();
+  updateSentiment();
+};
+
+window.updateCareerStatsView = (format) => {
+  if (!career.data) return;
+  
+  // Toggle active tab
+  const tabs = document.querySelectorAll('.stats-tabs button');
+  tabs.forEach(t => t.classList.remove('active'));
+  const activeTab = Array.from(tabs).find(t => t.innerText.toLowerCase() === format);
+  if (activeTab) activeTab.classList.add('active');
+
+  const stats = format === 'all' 
+    ? career.data.stats.test // Default to all? No, let's sum them if 'all'
+    : career.data.stats[format];
+    
+  let displayStats = stats;
+  if (format === 'all') {
+    displayStats = career.getInitialStats();
+    ['test', 'odi', 't20', 'ipl'].forEach(f => {
+      const fs = career.data.stats[f];
+      displayStats.matches += fs.matches;
+      displayStats.innings += fs.innings;
+      displayStats.runs += fs.runs;
+      displayStats.balls += fs.balls;
+      displayStats.fours += fs.fours;
+      displayStats.sixes += fs.sixes;
+      displayStats.highScore = Math.max(displayStats.highScore, fs.highScore);
+    });
+    displayStats.average = displayStats.innings > 0 ? (displayStats.runs / displayStats.innings).toFixed(2) : 0;
+    displayStats.strikeRate = displayStats.balls > 0 ? ((displayStats.runs / displayStats.balls) * 100).toFixed(2) : 0;
+  }
+
+  document.getElementById('stat-matches').innerText = displayStats.matches;
+  document.getElementById('stat-runs').innerText = displayStats.runs;
+  document.getElementById('stat-avg').innerText = displayStats.average;
+  document.getElementById('stat-sr').innerText = displayStats.strikeRate;
+  document.getElementById('stat-fours').innerText = displayStats.fours;
+  document.getElementById('stat-sixes').innerText = displayStats.sixes;
+  document.getElementById('stat-hs').innerText = displayStats.highScore;
+};
+
+window.renderScenarioGrid = () => {
+  const grid = document.getElementById('career-scenario-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  
+  SCENARIOS.forEach(s => {
+    const isCompleted = career.data.completedScenarios.includes(s.id);
+    const card = document.createElement('div');
+    card.className = `scenario-card ${isCompleted ? 'mastered' : ''}`;
+    card.innerHTML = `
+      <div class="sc-format" style="color: ${s.format === 'test' ? '#FF5252' : s.format === 'odi' ? '#4FC3F7' : '#AA3BFF'}">${s.format.toUpperCase()}</div>
+      <div class="sc-name">${s.name}</div>
+      <div class="sc-difficulty">${s.difficulty}</div>
+      <div class="sc-desc">${s.desc}</div>
+      <div class="sc-status">${isCompleted ? '✅ COMPLETED' : '▶ PLAY'}</div>
+    `;
+    if (!isCompleted) {
+      card.onclick = () => window.loadScenario(s.id);
+    }
+    grid.appendChild(card);
+  });
+};
+
+window.loadScenario = (id) => {
+  console.log("loadScenario called", id);
+  console.trace();
+  const scenario = SCENARIOS.find(s => s.id === id);
+  if (!scenario) return;
+
+  currentScenario = scenario;
+  isCareerMode = true;
+  isTournamentMode = false;
+
+  // Setup Teams based on Roster Type
+  const uTeamId = scenario.rosterType === 'domestic' ? 'mumbai' : 'india';
+  const oTeamId = scenario.rosterType === 'domestic' ? 'delhi' : 'australia';
+
+  // Start Match first to setup scene and objects
+  initMatch(uTeamId, oTeamId, false, scenario.rosterType, true, scenario.format);
+
+  // Overwrite Match State from Scenario
+  matchState.target = scenario.startScore + 50; 
+  matchState.totalRuns = scenario.startScore;
+  matchState.wickets = scenario.startWickets;
+  matchState.inningsBalls = scenario.startInningsBalls;
+  matchState.strikerIndex = scenario.startWickets;
+  matchState.nonStrikerIndex = (scenario.startWickets + 1) % 11;
+  userBattingIndex = scenario.startWickets; // User walks in at this wicket
+  
+  // Distribute start score among dismissed players in scorecard
+  if (scenario.startWickets > 0) {
+    const avgScore = Math.floor(scenario.startScore / scenario.startWickets);
+    for (let i = 0; i < scenario.startWickets; i++) {
+      if (batsmenStats[i]) {
+        batsmenStats[i].runs = avgScore;
+        batsmenStats[i].balls = Math.floor(avgScore * 0.9) + 2;
+        batsmenStats[i].status = 'out';
+      }
+    }
+  }
+  // Ensure User Name is set at the walk-in index
+  if (career.data && batsmenStats[userBattingIndex]) {
+    batsmenStats[userBattingIndex].name = career.data.playerName;
+  }
+
+  // Format and atmosphere now handled inside initMatch
+
+  // Hide Hub and show game UI
+  const cHub = document.getElementById('careerHub');
+  if (cHub) {
+    cHub.classList.remove('visible');
+    cHub.style.display = 'none';
+  }
+  document.getElementById('gameUI').style.display = 'block';
+  
+  isMatchStarted = true;
+  isBallActive = false;
+  resetBall(ballObject);
+  // matchState.totalRuns is user runs. We need to track the absolute score too.
+  matchState.absRunsAtStart = scenario.startScore;
+  matchState.absWicketsAtStart = scenario.startWickets;
+  matchState.absBallsAtStart = scenario.startInningsBalls;
+
+  showBriefMessage("SCENARIO: " + scenario.name.toUpperCase(), "#FFD54F");
+};
+
 window.showTeams = () => {
   document.getElementById('teamsScreen').classList.add('visible');
   const grid = document.getElementById('teamsFranchiseGrid');
@@ -400,13 +686,43 @@ window.playNextTournamentMatch = () => {
   initMatch(userTeamId, oppId, true);
 };
 
-function initMatch(userTeamId, oppId, isTournament = false) {
-  userTeam = isTournament ? getIPLTeam(userTeamId) : getTeam(userTeamId); 
-  opponentTeam = isTournament ? getIPLTeam(oppId) : getTeam(oppId);
+function initMatch(userTeamId, oppId, isTournament = false, rosterType = 'international', isCareer = false, format = 't20') {
+  console.log("initMatch called", { userTeamId, oppId, isTournament, rosterType, isCareer, format });
+  console.trace();
+
+  if (rosterType === 'domestic') {
+    userTeam = getDomesticTeam(userTeamId);
+    opponentTeam = getDomesticTeam(oppId);
+  } else if (rosterType === 'ipl' || isTournament) {
+    userTeam = getIPLTeam(userTeamId);
+    opponentTeam = getIPLTeam(oppId);
+  } else {
+    userTeam = getTeam(userTeamId);
+    opponentTeam = getTeam(oppId);
+  }
+
   isTournamentMode = isTournament;
+  isCareerMode = isCareer;
+
+  // 1. Determine and Set Format Early (Critical for FielderSystem)
+  const matchFormat = isCareer ? format : (isTournament ? 'ipl' : 't20');
+  setFormat(matchFormat);
+  document.body.className = matchFormat;
+
+  if (sceneUtils) {
+    sceneUtils.setMatchAtmosphere(matchFormat);
+    if (isCareer) sceneUtils.updatePlayerKits(matchFormat);
+  }
   
-  // Setup specialists
-  const specialists = isTournament ? opponentTeam.players.slice(-5) : getBowlers(opponentTeam.id);
+  // Setup specialists based on roster type
+  let specialists;
+  if (rosterType === 'domestic') {
+    specialists = getDomesticBowlers(opponentTeam.id);
+  } else if (rosterType === 'ipl' || isTournament) {
+    specialists = opponentTeam.players.slice(-5);
+  } else {
+    specialists = getBowlers(opponentTeam.id);
+  }
   bowlerStats = specialists.map(p => ({ name: p.name, overs: 0, runs: 0, wickets: 0, balls: 0 }));
   
   if (!isTournament) {
@@ -432,6 +748,14 @@ function initMatch(userTeamId, oppId, isTournament = false) {
   matchState.battingOrder = userTeam.players.map(p => p.name);
   batsmenStats = userTeam.players.map(p => ({ name: p.name, runs: 0, balls: 0, fours: 0, sixes: 0, status: 'not out' }));
   
+  if (isCareerMode && career.data) {
+    // Replace the name at the walk-in index (usually 0, but will be set by scenario)
+    const pIdx = userBattingIndex || 0;
+    if (batsmenStats[pIdx]) {
+      batsmenStats[pIdx].name = career.data.playerName;
+    }
+  }
+  
   // Update UI Initial
   document.getElementById('sb-bat-flag').innerText = userTeam.flagEmoji || '🏏';
   document.getElementById('sb-bat-short').innerText = userTeam.shortName;
@@ -453,6 +777,35 @@ function initMatch(userTeamId, oppId, isTournament = false) {
   fielders.forEach(f => {
     if (f.children[0]) f.children[0].material.color.copy(oppColor);
   });
+
+  // Atmosphere and Format handled at start of initMatch
+
+  if (isCareerMode && !currentScenario) {
+    simulateWalkIn(document.body.className); 
+  }
+}
+
+function simulateWalkIn(format) {
+  const isTest = format === 'test';
+  const maxWickets = isTest ? 7 : 5;
+  const wickets = Math.floor(Math.random() * maxWickets);
+  const runsPerWicket = isTest ? 40 : 30;
+  const runs = wickets * runsPerWicket + Math.floor(Math.random() * 50);
+  const ballsPerWicket = isTest ? 60 : 30;
+  const balls = wickets * ballsPerWicket + Math.floor(Math.random() * 20);
+
+  matchState.totalRuns = runs;
+  matchState.wickets = wickets;
+  matchState.inningsBalls = balls;
+  matchState.strikerIndex = wickets;
+  matchState.nonStrikerIndex = wickets + 1;
+  userBattingIndex = wickets;
+  
+  // Target for chase if needed
+  matchState.target = runs + 100; // Simplified target
+
+  updateUIScorebar();
+  showBriefMessage(`WALKING IN AT ${runs}/${wickets}`, "#4FC3F7");
 }
 
 function updateUIScorebar() {
@@ -596,13 +949,40 @@ function showBriefMessage(text, color = "#fff") {
   const overlay = document.getElementById('shotResult');
   overlay.innerText = text;
   overlay.style.color = color;
+  
+  // Dynamic scaling for long text
+  if (text.length > 20) {
+    overlay.style.fontSize = "40px";
+    overlay.style.letterSpacing = "4px";
+  } else {
+    overlay.style.fontSize = "80px";
+    overlay.style.letterSpacing = "2px";
+  }
+  
   overlay.style.opacity = "1";
   overlay.style.transform = "translate(-50%, -50%) scale(1)";
   
+  // Update Live Feed with more variety
+  const feed = document.getElementById('match-feed');
+  if (feed) {
+    const entry = document.createElement('div');
+    entry.className = 'feed-entry';
+    const time = Math.floor(matchState.inningsBalls / 6) + "." + (matchState.inningsBalls % 6);
+    const comments = [
+      "What a delivery!", "Shot of the day!", "Crowd is going wild!", 
+      "Pressure building up...", "Clinical performance.", "That's high into the air!",
+      "Beautiful timing.", "Absolute cracker of a ball!"
+    ];
+    const randComm = comments[Math.floor(Math.random() * comments.length)];
+    entry.innerHTML = `<span class="feed-time">${time}</span> <span class="feed-msg">${text} - ${randComm}</span>`;
+    feed.prepend(entry);
+    if (feed.children.length > 10) feed.lastChild.remove();
+  }
+
   setTimeout(() => {
     overlay.style.opacity = "0";
     overlay.style.transform = "translate(-50%, -50%) scale(0.8)";
-  }, 1200);
+  }, 1500); 
 }
 
 function updateScorecard() {
@@ -653,8 +1033,8 @@ function toggleScorecard() {
    🎯 BATTING & PHYSICS
 ================================ */
 
-function updateMatchState(runsScored, isWicket = false) {
-  matchState.inningsBalls++;
+function updateMatchState(runsScored, isWicket = false, isExtraBall = false) {
+  if (!isExtraBall) matchState.inningsBalls++;
   const activeStrikerIndex = matchState.strikerIndex; // CAPTURE NOW
   const striker = batsmenStats[activeStrikerIndex];
   const bowler = bowlerStats[currentBowlerIndex];
@@ -664,6 +1044,11 @@ function updateMatchState(runsScored, isWicket = false) {
   
   let dismissedIndex = -1;
   if (isWicket) {
+    currentCameraMode = CAMERA_MODES.BATSMAN;
+    cameraTargetPos.set(config.cameraSettings.batsmanCamPos.x, config.cameraSettings.batsmanCamPos.y, config.cameraSettings.batsmanCamPos.z);
+    camera.position.copy(cameraTargetPos); 
+    cameraLookAtTarget.set(config.cameraSettings.batsmanLookAt.x, config.cameraSettings.batsmanLookAt.y, config.cameraSettings.batsmanLookAt.z);
+    camera.lookAt(cameraLookAtTarget);
     matchState.wickets++;
     bowler.wickets++;
     striker.status = 'caught';
@@ -672,18 +1057,47 @@ function updateMatchState(runsScored, isWicket = false) {
     matchState.strikerIndex = Math.max(matchState.strikerIndex, matchState.nonStrikerIndex) + 1;
     if (matchState.strikerIndex >= 11) matchState.strikerIndex = 10; 
 
-    // Show Out Screen using the captured index
-    const dismissed = batsmenStats[dismissedIndex];
-    const sr = dismissed.balls > 0 ? ((dismissed.runs / dismissed.balls) * 100).toFixed(1) : '0.0';
-    document.getElementById('out-name').innerText = dismissed.name.toUpperCase();
-    document.getElementById('out-runs').innerText = dismissed.runs;
-    document.getElementById('out-balls').innerText = dismissed.balls;
-    document.getElementById('out-fours').innerText = dismissed.fours;
-    document.getElementById('out-sixes').innerText = dismissed.sixes;
-    document.getElementById('out-sr').innerText = sr;
+    // Career Mode: User got out
+    if (isCareerMode && dismissedIndex === userBattingIndex) {
+      if (currentScenario.goalType === 'personal') {
+        // Personal goal failed or finished
+        isMatchStarted = false;
+        setTimeout(() => showMatchResult('loss'), 1500);
+      } else {
+        // Team goal: Simulate rest of innings instantly
+        const totalInningsBalls = (document.body.className === 'test' ? 540 : (document.body.className === 'odi' ? 300 : 120));
+        const ballsLeft = Math.max(0, totalInningsBalls - matchState.inningsBalls);
+        let simRuns = 0;
+        for (let i = 0; i < ballsLeft; i++) {
+          const r = Math.random();
+          if (r < 0.05) break; // Wickets fall
+          if (r < 0.5) simRuns += 0;
+          else if (r < 0.8) simRuns += 1;
+          else if (r < 0.9) simRuns += 2;
+          else if (r < 0.97) simRuns += 4;
+          else simRuns += 6;
+        }
+        matchState.totalRuns += simRuns;
+        matchState.inningsBalls += ballsLeft;
+        
+        // Show result after a short delay with a "Next" button feel
+        alert(`You got out! \n\nTeam finished the innings.\nFinal Score: ${matchState.totalRuns}/${matchState.wickets}\n\nClick OK to see results.`);
+        isMatchStarted = false;
+        showMatchResult(matchState.totalRuns >= matchState.target ? 'win' : 'loss');
+      }
+      return; // Stop further processing
+    }
+
     const outEl = document.getElementById('outScreen');
+    document.getElementById('out-name').innerText = striker.name;
+    document.getElementById('out-runs').innerText = striker.runs;
+    document.getElementById('out-balls').innerText = striker.balls;
+    document.getElementById('out-fours').innerText = striker.fours;
+    document.getElementById('out-sixes').innerText = striker.sixes;
+    document.getElementById('out-sr').innerText = striker.balls > 0 ? ((striker.runs / striker.balls) * 100).toFixed(1) : "0.0";
+    
     outEl.classList.add('visible');
-    setTimeout(() => outEl.classList.remove('visible'), 2000); // Reduced to 2s
+    setTimeout(() => outEl.classList.remove('visible'), 2000); 
   } else {
     matchState.totalRuns += runsScored;
     striker.runs += runsScored;
@@ -692,6 +1106,20 @@ function updateMatchState(runsScored, isWicket = false) {
     else if (runsScored === 6) { striker.sixes++; showBriefMessage("SIX!", "#4CAF50"); }
     else if (runsScored > 0) showBriefMessage(`${runsScored} RUNS`, "#FFF");
     else showBriefMessage("DOT BALL", "#90A4AE");
+  }
+
+  // Immediate win check for Career Mode
+  if (isCareerMode && currentScenario && isMatchStarted) {
+    const tRuns = matchState.totalRuns - matchState.absRunsAtStart;
+    const uRuns = batsmenStats[userBattingIndex] ? batsmenStats[userBattingIndex].runs : 0;
+    const wkts = matchState.wickets - matchState.absWicketsAtStart;
+    const balls = matchState.inningsBalls - matchState.absBallsAtStart;
+    
+    if (currentScenario.condition(tRuns, uRuns, wkts, balls)) {
+      isMatchStarted = false;
+      setTimeout(() => showMatchResult('win'), 1000);
+      return;
+    }
   }
   
   // ── Wagon Wheel: record landing position ──
@@ -735,7 +1163,7 @@ function updateMatchState(runsScored, isWicket = false) {
     document.getElementById('oe-balls-left').innerText = `${ballsLeft} BALLS`;
     const oeEl = document.getElementById('overEndScreen');
     oeEl.classList.add('visible');
-    setTimeout(() => oeEl.classList.remove('visible'), 4000); // Reduced to 4s
+    setTimeout(() => oeEl.classList.remove('visible'), 4000); 
 
     matchState.overHistory = []; // Reset history for new over
     let temp = matchState.strikerIndex;
@@ -755,20 +1183,116 @@ function updateMatchState(runsScored, isWicket = false) {
   // document.getElementById('contactDiagram').style.display = 'none'; // Removed hiding
 
   checkMatchEnd();
+
+  // Strike Rotation Logic: ONLY in Career Mode
+  if (isCareerMode && isMatchStarted && matchState.strikerIndex !== userBattingIndex) {
+    setTimeout(simulateAIStrike, 1200);
+  }
+}
+
+async function simulateAIStrike() {
+  if (!isMatchStarted) return;
+  
+  const flash = document.getElementById('ai-flash-card');
+  const content = document.getElementById('flash-content');
+  flash.classList.add('visible');
+  content.innerText = "Non-striker taking charge...";
+
+  // Wait a bit before starting
+  await new Promise(r => setTimeout(r, 1000));
+
+  while (matchState.strikerIndex !== userBattingIndex && isMatchStarted) {
+    const r = Math.random();
+    let runs = 0;
+    let isWicket = false;
+
+    if (r < 0.05) isWicket = true;
+    else if (r < 0.45) runs = 0;
+    else if (r < 0.75) runs = 1;
+    else if (r < 0.85) runs = 2;
+    else if (r < 0.95) runs = 4;
+    else runs = 6;
+
+    // Record ball
+    matchState.inningsBalls++;
+    const striker = batsmenStats[matchState.strikerIndex];
+    const bowler = bowlerStats[currentBowlerIndex];
+    if (striker) striker.balls++;
+    if (bowler) bowler.balls++;
+
+    if (isWicket) {
+      matchState.wickets++;
+      if (bowler) bowler.wickets++;
+      if (striker) striker.status = 'out';
+      matchState.strikerIndex = Math.max(matchState.strikerIndex, matchState.nonStrikerIndex) + 1;
+      if (matchState.strikerIndex >= 11) matchState.strikerIndex = 10;
+      content.innerText = "WICKET FALLS!";
+    } else {
+      matchState.totalRuns += runs;
+      if (striker) striker.runs += runs;
+      if (bowler) bowler.runs += runs;
+      if (runs === 4 && striker) striker.fours++;
+      if (runs === 6 && striker) striker.sixes++;
+      content.innerText = runs === 0 ? "DOT BALL" : `${runs} RUNS`;
+
+      // Rotation
+      if (runs % 2 !== 0) {
+        let temp = matchState.strikerIndex;
+        matchState.strikerIndex = matchState.nonStrikerIndex;
+        matchState.nonStrikerIndex = temp;
+      }
+    }
+
+    // Over History
+    const ballLabel = isWicket ? 'W' : runs;
+    matchState.overHistory.push({ label: ballLabel, runs: runs, isWicket });
+
+    updateUIScorebar();
+    
+    // Pause for visibility
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Over end check
+    if (matchState.inningsBalls % 6 === 0) {
+      flash.classList.remove('visible');
+      // Trigger over end logic without double-counting the ball
+      updateMatchState(0, false, true); 
+      return;
+    }
+    
+    checkMatchEnd();
+    if (!isMatchStarted) break;
+  }
+
+  flash.classList.remove('visible');
 }
 
 function checkMatchEnd() {
   const runsNeeded = matchState.target - matchState.totalRuns;
-  const totalInningsBalls = (isTournamentMode ? config.tournamentSettings.oversPerMatch : 20) * 6;
+  const isTest = document.body.className === 'test';
+  let totalInningsBalls = 120; // Default T20
+  
+  if (isTest) {
+    totalInningsBalls = 540; // 90 overs per day approx
+  } else if (isTournamentMode) {
+    totalInningsBalls = config.tournamentSettings.oversPerMatch * 6;
+  } else if (document.body.className === 'odi') {
+    totalInningsBalls = 300; // 50 overs
+  }
+
   const ballsLeft = totalInningsBalls - matchState.inningsBalls;
   const isWicketsAllOut = matchState.wickets >= 10;
   
   let endType = null; // 'win', 'loss'
   
-  if (runsNeeded <= 0) {
+  if (runsNeeded <= 0 && !isTest) {
     endType = 'win';
-  } else if (ballsLeft <= 0 || isWicketsAllOut) {
+  } else if ((ballsLeft <= 0 || isWicketsAllOut) && !isTest) {
     endType = 'loss';
+  } else if (isTest && (isWicketsAllOut || ballsLeft <= 0)) {
+    // In Test, if balls run out or all out, it's a draw or loss depending on context
+    // For Career, we check scenario condition in showMatchResult
+    endType = 'loss'; 
   }
 
   if (endType) {
@@ -797,7 +1321,26 @@ function showMatchResult(type) {
     summary.innerText = `${userTeam.name} lost by ${runsShort} runs`;
   }
 
-  details.innerText = `Final Score: ${matchState.totalRuns}/${matchState.wickets} in ${Math.floor(matchState.inningsBalls / 6)}.${matchState.inningsBalls % 6} overs`;
+  details.innerHTML = `
+    <div style="font-size: 24px; color: var(--primary); margin-bottom: 10px;">
+      Final Score: ${matchState.totalRuns}/${matchState.wickets} in ${Math.floor(matchState.inningsBalls / 6)}.${matchState.inningsBalls % 6} overs
+    </div>
+  `;
+
+  if (isCareerMode && currentScenario) {
+    const tRuns = matchState.totalRuns - matchState.absRunsAtStart;
+    const uRuns = batsmenStats[userBattingIndex] ? batsmenStats[userBattingIndex].runs : 0;
+    const success = currentScenario.condition(tRuns, uRuns, 0, 0); // Simplified check for UI
+
+    details.innerHTML += `
+      <div class="scenario-result-box" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 10px; margin-top: 20px; border-left: 4px solid ${success ? '#4CAF50' : '#F44336'}">
+        <h3 style="margin: 0 0 10px 0; color: ${success ? '#4CAF50' : '#F44336'}">${success ? 'GOALS ACHIEVED' : 'GOALS FAILED'}</h3>
+        <p style="margin: 5px 0"><b>Personal:</b> ${uRuns} Runs (Goal: ${currentScenario.desc.includes('runs') ? 'Met' : 'N/A'})</p>
+        <p style="margin: 5px 0"><b>Team:</b> ${tRuns} Runs added during your stay</p>
+        <p style="margin: 5px 0; font-size: 14px; opacity: 0.7;">Objective: ${currentScenario.desc}</p>
+      </div>
+    `;
+  }
 
   if (isTournamentMode) {
     const result = {
@@ -807,7 +1350,69 @@ function showMatchResult(type) {
     };
     // Pass actual stats
     tournament.recordUserMatchResult(result, batsmenStats, bowlerStats);
+  } else if (isCareerMode && currentScenario) {
+    const teamRunsScored = matchState.totalRuns - matchState.absRunsAtStart;
+    const userRunsScored = batsmenStats[userBattingIndex] ? batsmenStats[userBattingIndex].runs : 0;
+    const wicketsLost = matchState.wickets - matchState.absWicketsAtStart;
+    const ballsFaced = matchState.inningsBalls - matchState.absBallsAtStart;
+    
+    const isSuccess = currentScenario.condition(teamRunsScored, userRunsScored, wicketsLost, ballsFaced);
+    if (isSuccess) {
+      career.completeScenario(currentScenario.id, currentScenario.repGained);
+      career.updateStats(currentScenario.format, {
+        runs: userRunsScored,
+        balls: batsmenStats[userBattingIndex] ? batsmenStats[userBattingIndex].balls : 0,
+        fours: batsmenStats[userBattingIndex] ? batsmenStats[userBattingIndex].fours : 0,
+        sixes: batsmenStats[userBattingIndex] ? batsmenStats[userBattingIndex].sixes : 0
+      });
+      showBriefMessage("SCENARIO COMPLETE! +" + currentScenario.repGained + " REP", "#4CAF50");
+    } else {
+      showBriefMessage("SCENARIO FAILED", "#F44336");
+    }
+    
+    // Check if all domestic scenarios done
+    if (career.data.completedScenarios.length === 12 && career.data.currentStage === 'domestic') {
+      career.data.currentStage = 'ipl';
+      career.data.milestones.iplCallup = true;
+      career.save();
+      alert("CONGRATULATIONS! You have been scouted for the IPL!");
+    }
+
+    if (currentScenario && currentScenario.id === 'wc_final' && isSuccess) {
+      triggerWorldCupCelebration();
+    }
+  } else if (isCareerMode) {
+    // Normal Career Match (IPL or International)
+    const runs = batsmenStats[userBattingIndex].runs;
+    const balls = batsmenStats[userBattingIndex].balls;
+    const fours = batsmenStats[userBattingIndex].fours;
+    const sixes = batsmenStats[userBattingIndex].sixes;
+    const format = document.body.className;
+
+    career.updateStats(format, { runs, balls, fours, sixes });
+    showBriefMessage(`MATCH OVER: ${runs} RUNS`, "#4FC3F7");
+    
+    if (career.data.milestones.nationalCallup && career.data.currentStage === 'international') {
+      alert("NATIONAL CALL-UP! You have been selected for the Indian National Team!");
+    }
   }
+}
+
+function triggerWorldCupCelebration() {
+  const overlay = document.createElement('div');
+  overlay.className = 'wc-celebration';
+  overlay.innerHTML = `
+    <div class="celeb-content">
+      <div class="celeb-title">WORLD CHAMPIONS</div>
+      <div class="celeb-sub">You have led India to World Cup Glory!</div>
+      <div class="celeb-stats">
+        <span>RUNS: ${career.data.stats.odi.runs}</span>
+        <span>REPUTATION: ${career.data.reputation}</span>
+      </div>
+      <button onclick="location.reload()" class="action-btn">RETIRE AS A LEGEND</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
 }
 
 function launchBall() {
@@ -838,6 +1443,9 @@ function launchBall() {
 
   startBowlerRunUp(config.bowlerSettings.runUpDuration);
   
+  const formatKey = (isCareerMode && currentScenario) ? currentScenario.format : (isTournamentMode ? 'ipl' : 't20');
+  const format = config.formatSettings[formatKey];
+
   // Bowler classification logic
   const specialists = isTournamentMode ? opponentTeam.players.slice(-5) : getBowlers(opponentTeam.id);
   const currentBowler = specialists[currentBowlerIndex];
@@ -846,15 +1454,23 @@ function launchBall() {
   // Spinners have more speed variation
   let speed = config.deliverySettings.baseSpeed + (Math.random() - 0.5) * 2 * config.deliverySettings.speedVariance;
   if (isSpinner) {
-    // Spinners: 70% to 85% of base speed
     speed = config.deliverySettings.baseSpeed * (0.70 + Math.random() * 0.15);
   }
 
-  const pitchZ = config.deliverySettings.pitchZMin + Math.random() * (config.deliverySettings.pitchZMax - config.deliverySettings.pitchZMin);
+  // AI Bowling Logic: Channel vs Variation
+  let targetX;
+  const isVariation = Math.random() < format.aiVariationFreq;
   
-  // Keep targetX strictly within the pitch width (approx -1.2 to 1.2)
-  let targetX = config.deliverySettings.pitchXMin + Math.random() * (config.deliverySettings.pitchXMax - config.deliverySettings.pitchXMin);
+  if (!isVariation && formatKey === 'test') {
+    // Channel Bowling: Aim for 4th stump (0.3 to 0.7)
+    targetX = 0.3 + Math.random() * 0.4;
+  } else {
+    // Standard random target
+    targetX = config.deliverySettings.pitchXMin + Math.random() * (config.deliverySettings.pitchXMax - config.deliverySettings.pitchXMin);
+  }
   targetX = Math.max(-1.1, Math.min(1.1, targetX));
+  
+  const pitchZ = config.deliverySettings.pitchZMin + Math.random() * (config.deliverySettings.pitchZMax - config.deliverySettings.pitchZMin);
   
   const releaseZ = config.bowlerSettings.releaseZ;
   const timeToPitch = (pitchZ - releaseZ) / speed;
@@ -866,13 +1482,13 @@ function launchBall() {
   
   if (!isSpinner) {
     // Pacers swing *towards* the target but might deviate slightly
-    const randomSwing = (Math.random() - 0.5) * 2 * 0.8; 
+    const randomSwing = (Math.random() - 0.5) * 2 * 0.8 * format.swingMult; 
     swingX += randomSwing;
   } else {
     // Normalizing speed to get a factor (lower speed = higher factor)
     const speedFactor = (config.deliverySettings.baseSpeed * 0.75) / speed; 
     const baseTurn = 3.0 + Math.random() * 2.5;
-    spinX = (Math.random() > 0.5 ? 1 : -1) * baseTurn * speedFactor;
+    spinX = (Math.random() > 0.5 ? 1 : -1) * baseTurn * speedFactor * (isVariation ? 1.5 : 1.0);
   }
 
   // RE-CALCULATE ACTUAL PITCH POINT based on the final swingX
@@ -911,14 +1527,17 @@ connectSocket((data) => {
       
       const indicator = document.getElementById('shotModeIndicator');
       const label = document.getElementById('modeLabel');
-      if (shotMode === 'none') {
-        indicator.style.display = 'none';
-      } else {
-        indicator.style.display = 'flex';
-        // Display the ACTUAL mode active (not the button name)
-        label.innerText = shotMode === 'loft' ? 'LOFT' : 'STROKE';
-        document.getElementById('modeDot').style.background = shotMode === 'loft' ? '#FF5252' : '#4CAF50';
-      }
+      requestAnimationFrame(() => {
+        if (shotMode === 'none') {
+          indicator.style.opacity = '0';
+          indicator.style.pointerEvents = 'none';
+        } else {
+          indicator.style.opacity = '1';
+          indicator.style.pointerEvents = 'auto';
+          label.innerText = shotMode === 'loft' ? 'LOFT' : 'STROKE';
+          document.getElementById('modeDot').style.background = shotMode === 'loft' ? '#FF5252' : '#4CAF50';
+        }
+      });
     }
     return;
   }
@@ -930,7 +1549,7 @@ connectSocket((data) => {
   const rawAccArr = data.data.acc;
   const rawGyro = data.data.gyro;
   const rawAcc = new THREE.Vector3(...rawAccArr);
-  const alpha = 0.95;
+  const alpha = 0.98; // Higher alpha = more sensitive to movement, less drift
   gravityVec.lerp(rawAcc, 1 - alpha);
   const linearAcc = rawAcc.clone().sub(gravityVec);
   const SENSOR_DT = 0.02;
@@ -975,6 +1594,44 @@ document.addEventListener('keydown', (e) => {
     calibrationQuaternion.copy(currentOrientation).invert();
     batHandDisplacement.set(0, 0, 0);
   }
+  if (e.code === 'KeyT') {
+    if (cameraController.isActive()) {
+      document.getElementById('calibrationOverlay').classList.add('visible');
+      const timer = setInterval(() => {
+        document.getElementById('calibrationCountdown').innerText = cameraController.calibrationManager.getCountdown();
+        if (!cameraController.calibrationManager.isActive()) {
+          clearInterval(timer);
+          document.getElementById('calibrationOverlay').classList.remove('visible');
+        }
+      }, 100);
+      cameraController.calibrate(restPosition);
+    }
+  }
+
+  if (e.code === 'KeyS') {
+    if (cameraController && cameraController.isActive() && batObject) {
+      // Set the rest position (the 'X' marker) to where the skeleton currently is
+      restPosition.x = batObject.position.x;
+      restPosition.z = batObject.position.z;
+      
+      // Instantly recalibrate so the skeleton doesn't jump due to the restPosition change
+      cameraController.instantCalibrate();
+      
+      // Also update the config so it persists for the session if needed
+      config.environment.restPosition.x = restPosition.x;
+      config.environment.restPosition.z = restPosition.z;
+      
+      showBriefMessage("GUARD SET", "#4FC3F7");
+    }
+  }
+  
+  // Adjust Batter Guard (Rest Position)
+  const step = 0.05;
+  if (e.code === 'ArrowUp') restPosition.z -= step;    // Towards Bowler
+  if (e.code === 'ArrowDown') restPosition.z += step;  // Towards Stumps
+  if (e.code === 'ArrowLeft') restPosition.x -= step;  // Towards Leg-side (for RHB)
+  if (e.code === 'ArrowRight') restPosition.x += step; // Towards Off-side (for RHB)
+
   if (e.code === 'KeyW') {
     wagonWheelVisible = !wagonWheelVisible;
     const overlay = document.getElementById('wagonWheelOverlay');
@@ -1137,7 +1794,12 @@ function drawWagonWheel(filterIdx) {
    📍 MINIMAP RENDERER
 ================================ */
 
+let minimapFrameCount = 0;
 function drawMinimap() {
+  minimapFrameCount++;
+  if ((isBallActive || isBallHit) && (minimapFrameCount % 4 !== 0)) {
+    return;
+  }
   const canvas = document.getElementById('minimap');
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1222,6 +1884,25 @@ function animate(time) {
   lastTime = time;
 
   updateBowlerRunUp(dt);
+  
+  if (guardMarkerObject) {
+    guardMarkerObject.position.set(restPosition.x, 0, restPosition.z);
+  }
+
+  // --- Camera Pose Update ---
+  const isOverlayVisible = 
+    document.getElementById('outScreen').classList.contains('visible') ||
+    document.getElementById('overEndScreen').classList.contains('visible') ||
+    document.getElementById('scorecardOverlay').classList.contains('visible') ||
+    document.getElementById('wagonWheelOverlay').classList.contains('visible');
+
+  if (cameraController && cameraController.isActive() && !isOverlayVisible) {
+    const trackingData = cameraController.update(currentOrientation, restPosition);
+    if (trackingData && trackingData.fusedTransform) {
+      batObject.position.copy(trackingData.fusedTransform.position);
+      batObject.quaternion.copy(calibrationQuaternion).multiply(trackingData.fusedTransform.quaternion);
+    }
+  }
 
   if (isBallActive) {
     const d = ballObject.userData.delivery;
@@ -1272,8 +1953,16 @@ function animate(time) {
           runState.isRunning = true; runState.runnerProgress = 0; runState.runsAttempted = 0;
           document.getElementById('pipMinimap').style.display = 'block';
           
+          let weightTransfer = 0.0;
+          if (cameraController && cameraController.isActive()) {
+            const metrics = cameraController.stanceAnalyzer.getMetrics();
+            if (metrics) {
+              weightTransfer = metrics.weightTransfer || 0.0;
+            }
+          }
+          
           const incomingVel = new THREE.Vector3(d.swingX, 0, d.speed);
-          const shot = computeShotFromContact(contact, batObject, incomingVel, currentWorldAngularVelocity, currentSwingPower);
+          const shot = computeShotFromContact(contact, batObject, incomingVel, currentWorldAngularVelocity, currentSwingPower, weightTransfer);
           
           // Show Impact Diagram
           showContactDiagram(shot.edgeFactor, shot.hitPosition);
@@ -1308,7 +1997,10 @@ function animate(time) {
     if (isAirborne && justBounced && (performance.now() - runState.hitStartTime) > config.physics.hitGracePeriod) {
        ballHasBouncedAfterHit = true;
        firstBouncePos = ballObject.position.clone();
-       onBallLanded(ballObject.position, Math.floor(matchState.inningsBalls / 6));
+       // Use the imported onBallLanded from FielderSystem
+       if (typeof onBallLanded === 'function') {
+         onBallLanded(ballObject.position, Math.floor(matchState.inningsBalls / 6));
+       }
     }
     
     const dist = Math.sqrt(ballObject.position.x**2 + ballObject.position.z**2);
@@ -1324,6 +2016,7 @@ function animate(time) {
        if (fieldRes.fielded) {
           if (fieldRes.caught) {
              isBallHit = false; runState.isRunning = false;
+             currentCameraMode = CAMERA_MODES.BATSMAN; // Return camera to batting view
              showBriefMessage("OUT! CAUGHT", "#FF5252");
              updateMatchState(0, true);
              document.getElementById('pipMinimap').style.display = 'none';
@@ -1444,5 +2137,33 @@ function setupTeamSelect() {
   };
 }
 
+function setupMainMenu() {
+  const careerBtn = document.querySelector('.home-btn:nth-child(1)');
+  const iplBtn = document.querySelector('.home-btn:nth-child(2)');
+  const quickBtn = document.querySelector('.home-btn:nth-child(3)');
+
+  if (careerBtn) careerBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Career Mode clicked via listener");
+    window.startCareerMode();
+  });
+  
+  if (iplBtn) iplBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("IPL Mode clicked via listener");
+    window.startIPLMode();
+  });
+  
+  if (quickBtn) quickBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Quick Play clicked via listener");
+    window.showQuickPlay();
+  });
+}
+
 setupTeamSelect();
+setupMainMenu();
 requestAnimationFrame(animate);

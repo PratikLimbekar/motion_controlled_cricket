@@ -12,6 +12,7 @@ let bowlerRunUpActive   = false;
 let bowlerRunUpProgress = 0;     // 0→1
 let bowlerRunUpDuration = 1.2;   // seconds
 let bowlerReleaseX      = 0;     // X offset chosen at start of delivery
+let currentFormat       = 't20'; // Current match format
 
 // ─── Public: Init ─────────────────────────────────────────────────────────
 export function initFielders(regularFielders, bowler, wk) {
@@ -80,6 +81,10 @@ export function updateBowlerRunUp(dt) {
 /** Returns the world X of the bowler at release, so ball can start from there */
 export function getBowlerReleaseX() { return bowlerReleaseX; }
 
+export function setFormat(format) {
+  currentFormat = format;
+}
+
 /** Returns the wicketkeeper's world position (for return throws) */
 export function getWicketkeeperPosition() {
   return wkObj ? wkObj.position.clone() : new THREE.Vector3(0, 0.5, config.stumpSettings.posZ_striker + 2.0);
@@ -98,7 +103,8 @@ export function onBallLanded(ballPosition, currentOver) {
     let diff = Math.abs(i - hotSector);
     if (diff > 4) diff = 8 - diff;
     const boost = Math.max(0, 1 - diff * 0.5);
-    heatMap[i] = heatMap[i] + (0.5 + boost * 0.5 - heatMap[i]) * 0.6;
+    // More aggressive heatmap update (increased from 0.6 to 0.8)
+    heatMap[i] = heatMap[i] + (0.5 + boost * 0.5 - heatMap[i]) * 0.8;
   }
   _recomputeTargets(currentOver);
 }
@@ -282,8 +288,15 @@ function polar(angleDeg, radius) {
 }
 
 function _recomputeTargets(currentOver) {
-  const maxOutside    = currentOver < 6 ? 2 : 5;
-  const deepThreshold = currentOver < 6 ? 0.55 : 0.30;
+  const format = config.formatSettings[currentFormat];
+  // Make it so that even test format isn't fixed forever, and matches the 'before' behavior
+  const isPowerplay = (currentFormat === 'test' && currentOver < 1) || 
+                      (currentFormat === 'odi' && currentOver < 10) || 
+                      (currentFormat === 't20' && currentOver < 6) || 
+                      (currentFormat === 'ipl' && currentOver < 6);
+  
+  const maxOutside = isPowerplay ? (format?.powerplay?.deep ?? 2) : 5;
+  const deepThreshold = isPowerplay ? 0.45 : 0.25; // Lowered from 0.55/0.3
   let outsideCount = 0;
 
   let roleScores = config.FIELDER_ROLES.map(role => {

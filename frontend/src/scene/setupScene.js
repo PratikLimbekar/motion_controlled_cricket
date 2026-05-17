@@ -19,20 +19,22 @@ export function setupScene(container) {
   const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
   sunLight.position.set(50, 100, 50);
   sunLight.castShadow = true;
-  sunLight.shadow.mapSize.width = 1024;
-  sunLight.shadow.mapSize.height = 1024;
+  sunLight.shadow.mapSize.width = 512;   // was 1024 — halves shadow GPU cost
+  sunLight.shadow.mapSize.height = 512;
   sunLight.shadow.camera.near = 0.5;
-  sunLight.shadow.camera.far = 500;
-  sunLight.shadow.camera.left = -150;
-  sunLight.shadow.camera.right = 150;
-  sunLight.shadow.camera.top = 150;
-  sunLight.shadow.camera.bottom = -150;
+  sunLight.shadow.camera.far = 250;
+  sunLight.shadow.camera.left = -35;
+  sunLight.shadow.camera.right = 35;
+  sunLight.shadow.camera.top = 35;
+  sunLight.shadow.camera.bottom = -35;
   scene.add(sunLight);
 
   const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x1B5E20, 0.6);
   scene.add(hemiLight);
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
   scene.add(ambientLight);
+
+  const lights = { sunLight, hemiLight, ambientLight, floodlights: [] };
 
   function createGrassTexture() {
     const canvas = document.createElement('canvas');
@@ -186,10 +188,12 @@ export function setupScene(container) {
     return lightGroup;
   }
   const fDist = config.BOUNDARY_R + 80;
-  scene.add(createFloodlight(fDist, fDist, -Math.PI / 4));
-  scene.add(createFloodlight(-fDist, fDist, Math.PI / 4));
-  scene.add(createFloodlight(fDist, -fDist, -Math.PI * 0.75));
-  scene.add(createFloodlight(-fDist, -fDist, Math.PI * 0.75));
+  const f1 = createFloodlight(fDist, fDist, -Math.PI / 4);
+  const f2 = createFloodlight(-fDist, fDist, Math.PI / 4);
+  const f3 = createFloodlight(fDist, -fDist, -Math.PI * 0.75);
+  const f4 = createFloodlight(-fDist, -fDist, Math.PI * 0.75);
+  scene.add(f1, f2, f3, f4);
+  lights.floodlights.push(f1, f2, f3, f4);
 
   const ss = new THREE.Mesh(new THREE.PlaneGeometry(15, 12), new THREE.MeshStandardMaterial({ color: config.colors.boundaryColor, roughness: 1.0 }));
   ss.position.set(0, 6, -config.BOUNDARY_R - 5); scene.add(ss);
@@ -278,7 +282,11 @@ export function setupScene(container) {
   const pivot = new THREE.Group();
   pivot.position.set(0, 1.8, 0);
 
-  const { width, height, thickness, spineThickness, color, handleColor, stickerColor, gripRibs } = config.batSettings;
+  const { width, height, thickness, spineThickness, color, handleColor, stickerColor, gripRibs, pivotOffset } = config.batSettings;
+  const batAssembly = new THREE.Group();
+  batAssembly.position.y = pivotOffset || 0;
+  pivot.add(batAssembly);
+
   const halfW = width / 2, faceZ = -spineThickness / 2, sideZ = faceZ + thickness, peakZ = spineThickness / 2;
   const batShape = new THREE.Shape();
   batShape.moveTo(-halfW, -faceZ); batShape.lineTo(halfW, -faceZ);
@@ -286,17 +294,17 @@ export function setupScene(container) {
   batShape.lineTo(-halfW, -sideZ); batShape.lineTo(-halfW, -faceZ);
   const batGeo = new THREE.ExtrudeGeometry(batShape, { depth: height, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 2 });
   const batMesh = new THREE.Mesh(batGeo, new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2 }));
-  batMesh.rotation.x = -Math.PI / 2; batMesh.castShadow = true; pivot.add(batMesh);
+  batMesh.rotation.x = -Math.PI / 2; batMesh.castShadow = true; batAssembly.add(batMesh);
 
   const handleMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.0, 16), new THREE.MeshStandardMaterial({ color: handleColor, roughness: 0.8 }));
-  handleMesh.position.set(0, -0.5, 0); pivot.add(handleMesh);
+  handleMesh.position.set(0, -0.5, 0); batAssembly.add(handleMesh);
   for (let i = 0; i < gripRibs; i++) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.082, 0.01, 8, 16), new THREE.MeshStandardMaterial({ color: handleColor }));
-    ring.rotation.x = Math.PI / 2; ring.position.y = -0.1 - (i * 0.12); pivot.add(ring);
+    ring.rotation.x = Math.PI / 2; ring.position.y = -0.1 - (i * 0.12); batAssembly.add(ring);
   }
   const gloveMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee });
-  const bGlove = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.15, 4, 8), gloveMat); bGlove.position.set(0, -0.7, 0); pivot.add(bGlove);
-  const tGlove = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.15, 4, 8), gloveMat); tGlove.position.set(0, -0.3, 0); pivot.add(tGlove);
+  const bGlove = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.15, 4, 8), gloveMat); bGlove.position.set(0, -0.7, 0); batAssembly.add(bGlove);
+  const tGlove = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.15, 4, 8), gloveMat); tGlove.position.set(0, -0.3, 0); batAssembly.add(tGlove);
 
   const mrfCanvas = document.createElement('canvas'); mrfCanvas.width = 128; mrfCanvas.height = 512;
   const mctx = mrfCanvas.getContext('2d');
@@ -306,9 +314,9 @@ export function setupScene(container) {
   mctx.fillStyle = '#333'; mctx.font = '30px Arial'; mctx.fillText('Genius',64,150); mctx.fillText('GRAND',64,380); mctx.fillText('EDITION',64,410);
   const mrfTex = new THREE.CanvasTexture(mrfCanvas);
   const sticker = new THREE.Mesh(new THREE.PlaneGeometry(width*0.8, height*0.85), new THREE.MeshBasicMaterial({ map: mrfTex, transparent: true }));
-  sticker.position.set(0, height/2+0.2, faceZ-0.002); pivot.add(sticker);
+  sticker.position.set(0, height/2+0.2, faceZ-0.002); batAssembly.add(sticker);
   const shoulderMesh = new THREE.Mesh(new THREE.BoxGeometry(width, 0.2, spineThickness), new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2 }));
-  shoulderMesh.position.set(0, 0, 0); pivot.add(shoulderMesh);
+  shoulderMesh.position.set(0, 0, 0); batAssembly.add(shoulderMesh);
   scene.add(pivot);
 
   // ─── Ball ─────────────────────────────────────────────────────────────────
@@ -320,13 +328,80 @@ export function setupScene(container) {
   const bounceMarker = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.45, 32), markerMat);
   bounceMarker.rotation.x = -Math.PI / 2; bounceMarker.position.y = 0.03; bounceMarker.visible = false; scene.add(bounceMarker);
 
+  // ─── Guard Marker (X mark for batter position) ────────────────────────────
+  const guardMarkerMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+  const guardGeo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.3, 0.02, -0.3), new THREE.Vector3(0.3, 0.02, 0.3)]);
+  const guardGeo2 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.3, 0.02, 0.3), new THREE.Vector3(0.3, 0.02, -0.3)]);
+  const guardLine1 = new THREE.Line(guardGeo1, guardMarkerMat);
+  const guardLine2 = new THREE.Line(guardGeo2, guardMarkerMat);
+  const guardMarker = new THREE.Group();
+  guardMarker.add(guardLine1);
+  guardMarker.add(guardLine2);
+  scene.add(guardMarker);
+
+  const setMatchAtmosphere = (format) => {
+    switch(format) {
+      case 'test':
+        scene.background = new THREE.Color(0x87CEEB);
+        lights.sunLight.intensity = 1.2;
+        lights.sunLight.color.set(0xffffff);
+        lights.hemiLight.intensity = 0.6;
+        lights.floodlights.forEach(f => f.visible = false);
+        ball.material.color.set(0xff0000); // Red ball
+        break;
+      case 'odi':
+        scene.background = new THREE.Color(0xFFA07A); // Sunset
+        lights.sunLight.intensity = 0.8;
+        lights.sunLight.color.set(0xffd1a9);
+        lights.hemiLight.intensity = 0.4;
+        lights.floodlights.forEach(f => f.visible = false);
+        ball.material.color.set(0xffffff); // White ball
+        break;
+      case 't20':
+      case 'ipl':
+        scene.background = new THREE.Color(0x87CEEB); // Back to Day
+        lights.sunLight.intensity = 1.1;
+        lights.sunLight.color.set(0xffffff);
+        lights.hemiLight.intensity = 0.5;
+        lights.floodlights.forEach(f => f.visible = false);
+        ball.material.color.set(0xffffff); // White ball
+        break;
+    }
+  };
+
+  const updatePlayerKits = (format) => {
+    const isTest = format === 'test';
+    const jersey = isTest ? 0xEEEEEE : 0x1E88E5;
+    const pants = isTest ? 0xEEEEEE : 0x1565C0;
+    
+    fielders.forEach(f => {
+      f.children[0].material.color.set(jersey); // Body
+      f.children[4].material.color.set(pants); // Leg
+      f.children[5].material.color.set(pants); // Leg
+    });
+    
+    // Wicketkeeper
+    wk.children[0].material.color.set(jersey);
+    wk.children[4].material.color.set(pants);
+    wk.children[5].material.color.set(pants);
+    
+    // Bowler (Opponent)
+    const oppJersey = isTest ? 0xEEEEEE : 0xE53935;
+    bowler.children[0].material.color.set(oppJersey);
+  };
+
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  return { scene, camera, renderer, bat: pivot, ball, bounceMarker, fielders, bowler, wicketkeeper: wk };
+  return { 
+    scene, camera, renderer, 
+    bat: pivot, ball, bounceMarker, guardMarker,
+    fielders, bowler, wicketkeeper: wk,
+    setMatchAtmosphere, updatePlayerKits
+  };
 }
 
 export function updateBallPosition(ball, zPos) {
